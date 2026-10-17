@@ -71,7 +71,7 @@ if ($tab === 'problems') {
 	}
 	$problem_url = (new CUrl('zabbix.php'))->setArgument('action', 'problem.view')
 		->setArgument('hostids', $data['problem_hostids'] ?: ['0'])->setArgument('filter_set', 1);
-	$results->addItem((new CDiv($table))->addClass('dashboard-widget-problems'));
+	$results->addItem((new CDiv($table))->addClass('dashboard-widget-problems')->setAttribute('data-netapp-problems', '1'));
 	if (($widget['info'] ?? '') !== '') {
 		$results->addItem((new CDiv($widget['info']))->addClass('netapp-monitoring-note'));
 	}

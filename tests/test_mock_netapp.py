@@ -7,6 +7,7 @@ import re
 import socket
 import threading
 import unittest
+from unittest.mock import Mock
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
@@ -53,6 +54,20 @@ class MockNetAppTests(unittest.TestCase):
                 with self.assertRaises(HTTPError) as error:
                     self.request(path, payload, auth)
                 self.assertEqual(error.exception.code, 401)
+
+    def test_disconnected_clients_during_headers_and_body(self):
+        for stage in ("send_response", "send_header", "end_headers", "write"):
+            for error in (BrokenPipeError, ConnectionResetError):
+                with self.subTest(stage=stage, error=error.__name__):
+                    handler = object.__new__(self.server.RequestHandlerClass)
+                    handler.send_response = Mock()
+                    handler.send_header = Mock()
+                    handler.end_headers = Mock()
+                    handler.wfile = Mock()
+                    target = handler.wfile.write if stage == "write" else getattr(handler, stage)
+                    target.side_effect = error("Client disconnected")
+                    handler.reply(200, {"status": "ok"})
+        self.assertEqual(self.request("/healthz", auth=None)["status"], "ok")
 
     def test_every_template_endpoint_and_requested_field(self):
         template = (ROOT / "template_san_netapp_aff_a700_http.yaml").read_text(encoding="utf-8")

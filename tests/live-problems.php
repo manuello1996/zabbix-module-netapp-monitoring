@@ -55,6 +55,41 @@ try {
 	if ($widget['problems'] && strpos($html, 'data-eventid=') === false) {
 		throw new RuntimeException('Native problem event rows are missing.');
 	}
+	// Exercise genuine native symptom markup using an in-memory relationship.
+	// No event ranking, trigger, or problem changes are sent to the live API.
+	$fixture_events = [];
+	foreach ($widget['problems'] as $problem) {
+		$fixture_events[] = $problem;
+		foreach ($problem['symptoms'] as $symptom) { $fixture_events[] = $symptom; }
+	}
+	if (count($fixture_events) >= 2) {
+		$parent = $fixture_events[0];
+		$child = $fixture_events[1];
+		$parent['cause_eventid'] = '0';
+		$child['cause_eventid'] = (string) $parent['eventid'];
+		$child['symptom_count'] = 0;
+		$child['symptoms'] = [];
+		$parent['symptom_count'] = 1;
+		$parent['symptoms'] = [$child];
+		$nested_widget = $widget;
+		$nested_widget['problems'] = [$parent['eventid'] => $parent];
+		$nested_widget['show_three_columns'] = true;
+		$nested_widget['show_two_columns'] = false;
+		$nested_html = (string) new Widgets\Problems\Includes\WidgetProblems($nested_widget);
+		$previous_errors = libxml_use_internal_errors(true);
+		$document = new DOMDocument();
+		$document->loadHTML($nested_html);
+		$xpath = new DOMXPath($document);
+		$rows = $xpath->query('//tr[@data-cause-eventid="'.$parent['eventid'].'" and @data-eventid="'.$child['eventid'].'"]');
+		if ($rows->length !== 1 || !preg_match('/(?:^|\s)hidden(?:\s|$)/', $rows->item(0)->getAttribute('class'))) {
+			throw new RuntimeException('Native nested symptom must be rendered once, initially collapsed.');
+		}
+		if ($xpath->query('//button[@data-action="show_symptoms" and @data-eventid="'.$parent['eventid'].'"]')->length !== 1) {
+			throw new RuntimeException('Native cause must expose its symptom toggle.');
+		}
+		libxml_clear_errors();
+		libxml_use_internal_errors($previous_errors);
+	}
 	$rendered = (string) Modules\NetAppMonitoring\Includes\NetAppRenderer::problems([
 		'host' => ['hostid' => $hostid], 'snapshot' => ['problems_available' => true],
 		'problem_widget' => $widget, 'search' => ''
@@ -77,11 +112,11 @@ try {
 		CWebUser::$data['rows_per_page'] = $rows;
 		$first = Modules\NetAppMonitoring\Includes\NetAppProblems::data($hostid);
 		$second = Modules\NetAppMonitoring\Includes\NetAppProblems::data($hostid, '', null, 2);
-		if ($first['per_page'] !== $rows || count($first['problems']) !== min($rows, $first['total'])) {
+		if ($first['per_page'] !== $rows || count($first['page_eventids']) !== min($rows, $first['total'])) {
 			throw new RuntimeException('Problem row count does not follow the user preference.');
 		}
 		if ($first['pages'] > 1 && ($second['page'] !== 2
-				|| array_intersect_key($first['problems'], $second['problems']))) {
+				|| array_intersect($first['page_eventids'], $second['page_eventids']))) {
 			throw new RuntimeException('Problem pagination repeated first-page events.');
 		}
 	}

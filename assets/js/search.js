@@ -32,9 +32,13 @@
 				const page = new DOMParser().parseFromString(await response.text(), 'text/html');
 				const replacement = page.getElementById('netapp-search-results');
 				if (!replacement) throw new Error('Search results unavailable');
+				const summary = document.getElementById('netapp-host-summary');
+				const updatedSummary = summary ? page.getElementById('netapp-host-summary') : null;
+				if (summary && !updatedSummary) throw new Error('Host status unavailable');
 				if (current !== generation) return;
 				replacement.removeAttribute('aria-busy');
 				results.replaceWith(replacement);
+				if (summary) summary.replaceWith(updatedSummary);
 				window.history.replaceState(null, '', url);
 				document.querySelector('[data-netapp-refresh]')?.setAttribute('data-url', url.toString());
 				if (status) status.textContent = '';

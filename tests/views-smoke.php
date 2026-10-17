@@ -115,6 +115,8 @@ $outputs = [];
 foreach (['overview', 'nodes', 'svms', 'volumes', 'luns', 'ethernet', 'fc', 'hardware', 'performance', 'problems'] as $tab) {
 	$html = render('netapp.monitoring.view', array_replace($base, ['tab' => $tab]));
 	check(strpos($html, '<main>') !== false, "$tab renders a page");
+	check(substr_count($html, 'id="netapp-host-summary"') === 1,
+		"$tab provides a replaceable status, banner and counters region");
 	check(strpos($html, '<script>') === false, "$tab escapes script names and warnings");
 	check(strpos($html, '<img src=x') === false && strpos($html, '<svg onload') === false,
 		"$tab escapes values and problem names");
@@ -332,6 +334,39 @@ $healthy['collection']['status'] = 'ok';
 check(Modules\NetAppMonitoring\Includes\NetAppRenderer::collectionNotice($healthy, '20') === null
 	&& Modules\NetAppMonitoring\Includes\NetAppRenderer::collectionMarker($healthy) === null,
 	'Recovery removes collection banner and main marker');
+
+$inventory = $base;
+$inventory['tab'] = 'volumes';
+$inventory['per_page'] = 2;
+$resource = $snapshot['entities']['volumes'][0];
+$inventory['snapshot']['entities']['volumes'] = [];
+foreach ([['z-volume', 'svm-a'], ['a-volume', 'svm-b'], ['b-volume', 'svm-a'], ['unknown-volume', '']] as [$name, $parent]) {
+	$inventory['snapshot']['entities']['volumes'][] = array_replace($resource,
+		['id' => $name, 'name' => $name, 'parent' => $parent]);
+}
+$inventory_html = render('netapp.monitoring.view', $inventory);
+check(substr_count($inventory_html, 'data-netapp-inventory-group="svm"') === 1
+	&& strpos($inventory_html, 'SVM: svm-a') !== false, 'SVM groups stay together before resource pagination');
+check(strpos($inventory_html, 'b-volume') < strpos($inventory_html, 'z-volume'), 'Name sorting applies within each SVM');
+check(strpos($inventory_html, '2 resources') !== false
+	&& strpos($inventory_html, 'Displaying 1 to 2 of 4 found') !== false, 'Group headings do not consume page rows');
+$inventory['page'] = 2;
+$inventory_html = render('netapp.monitoring.view', $inventory);
+check(strpos($inventory_html, 'SVM: svm-b') !== false && strpos($inventory_html, 'SVM: Unavailable') !== false,
+	'Missing ownership stays visible after known SVM groups');
+$inventory['page'] = 2;
+$inventory['per_page'] = 1;
+$inventory_html = render('netapp.monitoring.view', $inventory);
+check(strpos($inventory_html, 'SVM: svm-a') !== false && strpos($inventory_html, '2 resources') !== false,
+	'Continued groups repeat their heading and full matching count');
+$inventory['search'] = 'svm-b';
+$inventory_html = render('netapp.monitoring.view', $inventory);
+check(strpos($inventory_html, 'SVM: svm-b') !== false && strpos($inventory_html, 'SVM: svm-a') === false,
+	'Live search matches ownership and filters group headings');
+foreach (['luns' => 'svm', 'ethernet' => 'node', 'fc' => 'node', 'hardware' => 'node'] as $tab => $kind) {
+	$html = render('netapp.monitoring.view', array_replace($base, ['tab' => $tab, 'per_page' => 50]));
+	check(strpos($html, 'data-netapp-inventory-group="'.$kind.'"') !== false, "$tab groups by supplied ownership");
+}
 
 if (isset($argv[2])) {
 	if (!is_dir($argv[2])) { mkdir($argv[2], 0777, true); }

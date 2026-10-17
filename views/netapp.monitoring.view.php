@@ -20,7 +20,8 @@ $page->setControls((new CTag('nav', true, (new CList())
 	->addItem((new CRedirectButton(_('Refresh'), R::url(['hostid' => $hostid, 'tab' => $data['tab'],
 		'search' => $data['search'], 'page' => $data['page'], 'sort' => $data['sort'], 'sortorder' => $data['sortorder']])))->setAttribute('data-netapp-refresh', '1'))))
 	->setAttribute('aria-label', _('Host actions')));
-$page->addItem((new CDiv([
+$summary = (new CDiv())->setId('netapp-host-summary');
+$summary->addItem((new CDiv([
 	(new CDiv([new CLink(_('NetApp systems'), (new CUrl('zabbix.php'))->setArgument('action', 'netapp.monitoring.list')),
 		(new CSpan('›'))->addClass('netapp-monitoring-breadcrumb-sep'), new CSpan($data['host']['name'])]))
 		->addClass('netapp-monitoring-breadcrumb'),
@@ -34,17 +35,18 @@ $page->addItem((new CDiv([
 			->addClass('netapp-monitoring-context-version')
 	]))->addClass('netapp-monitoring-topbar-context')
 ]))->addClass('netapp-monitoring-topbar'));
-$page->addItem(R::collectionNotice($snapshot, $hostid));
+$summary->addItem(R::collectionNotice($snapshot, $hostid));
 $stats = [];
 foreach (['nodes' => _('Nodes'), 'svms' => _('SVMs'), 'volumes' => _('Volumes'), 'luns' => _('LUNs')] as $key => $label) {
 	$stats[] = R::stat($label, new CLink((string) count($snapshot['entities'][$key] ?? []), R::url(['hostid' => $hostid, 'tab' => $key])));
 }
 $stats[] = R::stat(_('Active problems'), new CLink(($snapshot['problems_available'] ?? true)
 	? (string) count($snapshot['problems']) : _('Unavailable'), R::url(['hostid' => $hostid, 'tab' => 'problems'])));
-$page->addItem((new CDiv($stats))->addClass('netapp-monitoring-statstrip'));
+$summary->addItem((new CDiv($stats))->addClass('netapp-monitoring-statstrip'));
 foreach ($snapshot['warnings'] ?? [] as $warning) {
-	$page->addItem((new CDiv($warning))->addClass('netapp-monitoring-note'));
+	$summary->addItem((new CDiv($warning))->addClass('netapp-monitoring-note'));
 }
+$page->addItem($summary);
 $page->addItem(R::tabs($data));
 $content = new CDiv();
 if (in_array($data['tab'], ['performance', 'problems'], true)) {

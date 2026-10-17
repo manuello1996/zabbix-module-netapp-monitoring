@@ -224,4 +224,15 @@ $before = count(API::$calls);
 $result = NetAppCollector::locationProblems($groups);
 check(!reset($result)['problems_available'] && count(API::$calls) === $before + 1,
 	'Denied group problems show unavailable and skip trigger lookup.');
+$relationship_item = ['key_' => 'netapp.volume.svm_name[vol1]', 'lastvalue' => 'svm-a',
+	'lastclock' => 123, 'status' => 0, 'state' => 0];
+$relationships = NetAppCollector::normalizeItems([$relationship_item]);
+check($relationships['entities']['volumes'][0]['parent'] === 'svm-a', 'Volume ownership comes from the SVM scalar.');
+foreach ([['status' => 1], ['lastclock' => 0], ['lastvalue' => null]] as $override) {
+	$relationships = NetAppCollector::normalizeItems([array_replace($relationship_item, $override)]);
+	check($relationships['entities']['volumes'][0]['parent'] === '', 'Unavailable ownership must never be inferred.');
+}
+$relationships = NetAppCollector::normalizeItems([array_replace($relationship_item, ['state' => 1])]);
+check($relationships['entities']['volumes'][0]['parent'] === 'svm-a'
+	&& $relationships['entities']['volumes'][0]['parent_stale'], 'Unsupported SVM ownership retains a marked relationship.');
 echo 'Collector checks passed; covered '.count($checked)." distinct scalar template keys.\n";

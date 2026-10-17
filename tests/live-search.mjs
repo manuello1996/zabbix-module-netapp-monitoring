@@ -12,6 +12,9 @@ let timerId = 0;
 const status = {textContent: '', dataset: {searching: 'Searching', error: 'Failed'}};
 const refresh = {setAttribute(name, value) { this[name] = value; }};
 let results;
+let summary;
+const summaryResult = text => ({text, replaceWith(next) { summary = next; }});
+summary = summaryResult('healthy');
 const result = text => ({text, attributes: {},
 	setAttribute(name, value) { this.attributes[name] = value; },
 	removeAttribute(name) { delete this.attributes[name]; },
@@ -25,12 +28,15 @@ const window = {location: {href: 'http://127.0.0.1/zabbix.php?action=netapp.moni
 	history: {replaceState(_state, _title, url) { window.location.href = url.toString(); }}};
 const document = {
 	addEventListener(name, callback) { listeners.set(name, callback); },
-	getElementById() { return results; }, querySelector(selector) { return selector === '[data-netapp-main-filter] form' ? form : refresh; }
+	getElementById(id) { return id === 'netapp-host-summary' ? summary : results; }, querySelector(selector) { return selector === '[data-netapp-main-filter] form' ? form : refresh; }
 };
 vm.runInNewContext(source, {document, window, URL, URLSearchParams, AbortController,
 	jQuery(target) { assert.equal(target, form); return {on(name, selector, callback) { groupChange = callback; }}; },
 	FormData: class { constructor(form) { return Object.entries(form.values); } },
-	DOMParser: class { parseFromString(text) { return {getElementById() { return text === 'login' ? null : result(text); }}; } },
+	DOMParser: class { parseFromString(text) { return {getElementById(id) {
+		if (text === 'login') return null;
+		return id === 'netapp-host-summary' ? (text === 'missing summary' ? null : summaryResult('status: ' + text)) : result(text);
+	}}; } },
 	setTimeout(fn) { const id = ++timerId; timers.set(id, fn); return id; },
 	clearTimeout(id) { timers.delete(id); },
 	fetch(url, options) { return new Promise((resolve, reject) => requests.push({url, options, resolve, reject})); }
@@ -59,6 +65,7 @@ assert.equal(requests[0].url.searchParams.get('tab'), 'volumes');
 respond(requests[0], 'volumes filtered');
 await first;
 assert.equal(results.text, 'volumes filtered');
+assert.equal(summary.text, 'status: volumes filtered', 'Host banner, context and counters update with the same snapshot');
 assert.equal(status.textContent, '');
 assert.equal(refresh['data-url'], window.location.href);
 assert.equal(form.values.search, 'vol', 'Input is never replaced');
@@ -68,12 +75,14 @@ type('new');
 assert.equal(requests[1].options.signal.aborted, true, 'New input aborts the old request immediately');
 respond(requests[1], 'old stale results'); await old;
 assert.equal(results.text, 'volumes filtered', 'Stale reply cannot replace results even during debounce');
+assert.equal(summary.text, 'status: volumes filtered', 'Stale reply cannot change the collection banner');
 const latest = runTimer(); respond(requests[2], 'new results'); await latest;
 assert.equal(results.text, 'new results');
 
 type('broken'); const failed = runTimer(); respond(requests[3], 'login'); await failed;
 assert.equal(status.textContent, 'Failed', 'Expired session or missing results is visible');
 assert.equal(results.text, 'new results', 'Failed search preserves previous results');
+assert.equal(summary.text, 'status: new results', 'Failed search preserves the corresponding host status');
 assert.equal(results.attributes['aria-busy'], undefined);
 
 type('', {isComposing: true});
@@ -87,10 +96,21 @@ listeners.get('submit')({target: form, preventDefault() { prevented = true; }});
 assert.equal(prevented, true, 'Enter searches without navigation');
 const enter = runTimer(); respond(requests[5], 'submitted'); await enter;
 assert.equal(results.text, 'submitted');
+type('outage');
+const outage = runTimer(); respond(requests[6], 'HTTP collection failing'); await outage;
+assert.equal(summary.text, 'status: HTTP collection failing');
+type('recovered');
+const recovered = runTimer(); respond(requests[7], 'healthy again'); await recovered;
+assert.equal(summary.text, 'status: healthy again', 'Recovery replaces the obsolete outage warning');
+type('missing status');
+const incomplete = runTimer(); respond(requests[8], 'missing summary'); await incomplete;
+assert.equal(results.text, 'healthy again', 'Missing host status prevents a partial result update');
+assert.equal(summary.text, 'status: healthy again');
+summary = null;
 form.values = {action: 'netapp.monitoring.list', tab: 'problems', search: 'Cabinet', 'filter_groupids[]': '25'};
 groupChange();
-const groupSearch = runTimer(); respond(requests[6], 'group filtered problems'); await groupSearch;
-assert.equal(requests[6].url.searchParams.get('filter_groupids[]'), '25', 'Group multiselect values included');
-assert.equal(requests[6].url.searchParams.get('tab'), 'problems', 'Group changes preserve active main tab');
-assert.equal(requests[6].url.searchParams.has('page'), false, 'Group change resets pagination');
+const groupSearch = runTimer(); respond(requests[9], 'group filtered problems'); await groupSearch;
+assert.equal(requests[9].url.searchParams.get('filter_groupids[]'), '25', 'Group multiselect values included');
+assert.equal(requests[9].url.searchParams.get('tab'), 'problems', 'Group changes preserve active main tab');
+assert.equal(requests[9].url.searchParams.has('page'), false, 'Group change resets pagination');
 console.log('Live search checks passed: debounce, pagination, focus preservation, request races, failure, IME, clear, Enter.');

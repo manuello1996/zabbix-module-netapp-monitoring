@@ -135,6 +135,9 @@ class NetAppCollector {
 						$item['stale'] = $item['lastvalue'] !== null && (int) ($item['status'] ?? 0) === 0;
 					}
 					unset($item);
+					if (isset($row['parent_stale']) && $row['parent'] !== '') {
+						$row['parent_stale'] = true;
+					}
 				}
 				unset($row);
 			}
@@ -270,6 +273,15 @@ class NetAppCollector {
 		foreach ($result['entities'] as $group => &$rows) {
 			foreach ($rows as &$row) {
 				$metrics = $row['metrics'];
+				// Volumes carry SVM ownership as a scalar value; other resource
+				// relationships are encoded in the template's item key parameters.
+				if ($group === 'volumes') {
+					$svm = $metrics['svm_name'] ?? null;
+					$row['parent'] = $svm !== null && (int) ($svm['status'] ?? 0) === 0
+						&& (int) ($svm['lastclock'] ?? 0) > 0 ? trim((string) ($svm['lastvalue'] ?? '')) : '';
+					$row['parent_stale'] = $row['parent'] !== ''
+						&& (!empty($svm['stale']) || (int) ($svm['state'] ?? 0) !== 0);
+				}
 				$size = self::numericValue($metrics[$group === 'luns' ? 'space.size' : 'space_size'] ?? null);
 				$used = self::numericValue($metrics[$group === 'luns' ? 'space.used' : 'space_used'] ?? null);
 				$available = self::numericValue($metrics['space_available'] ?? null);

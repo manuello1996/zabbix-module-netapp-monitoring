@@ -265,6 +265,8 @@ class NetAppRenderer {
 		foreach ($groups as $group) {
 			foreach ($data['snapshot']['entities'][$group] ?? [] as $row) {
 				$row['_group'] = $group;
+				$row['_parent_kind'] = in_array($group, ['volumes', 'luns'], true) ? 'svm'
+					: (in_array($group, ['disks', 'ethernet_ports', 'fc_ports'], true) ? 'node' : '');
 				$rows[] = $row;
 			}
 		}
@@ -281,6 +283,13 @@ class NetAppRenderer {
 		$sort = $data['sort'] ?? 'name';
 		$order = $data['sortorder'] ?? 'ASC';
 		usort($rows, static function ($a, $b) use ($sort, $order) {
+			// Keep each relationship together; requested sorting applies within it.
+			$group_order = strcmp($a['_parent_kind'], $b['_parent_kind']);
+			if ($group_order === 0 && $a['_parent_kind'] !== '') {
+				$group_order = ((int) ($a['parent'] === '') <=> (int) ($b['parent'] === ''))
+					?: strnatcasecmp($a['parent'], $b['parent']) ?: strcmp($a['parent'], $b['parent']);
+			}
+			if ($group_order !== 0) { return $group_order; }
 			if ($sort === 'used') {
 				$left = $a['capacity']['percent'] ?? -1;
 				$right = $b['capacity']['percent'] ?? -1;
@@ -297,6 +306,12 @@ class NetAppRenderer {
 			return $order === 'DESC' ? -$result : $result;
 		});
 		$total = count($rows);
+		$relationships = [];
+		foreach ($rows as $row) {
+			$key = json_encode([$row['_parent_kind'], $row['parent']]);
+			$relationships[$key]['count'] = ($relationships[$key]['count'] ?? 0) + 1;
+			$relationships[$key]['stale'] = !empty($relationships[$key]['stale']) || !empty($row['parent_stale']);
+		}
 		$per_page = max(1, (int) ($data['per_page'] ?? 50));
 		$page = min(max(1, (int) $data['page']), max(1, (int) ceil($total / $per_page)));
 		$args = ['hostid' => $data['host']['hostid'], 'tab' => $data['tab'], 'search' => $search,
@@ -310,7 +325,24 @@ class NetAppRenderer {
 			(new \CColHeader(_('Parent / type')))->addClass(ZBX_STYLE_NOWRAP),
 			$header(_('State'), 'state'), $capacity ? $header(_('Used / size'), 'used') : _('Properties'),
 			_('Last update')])->setNoDataMessage(_('No discovered resources match this view.'));
+		$previous_relationship = null;
 		foreach (array_slice($rows, ($page - 1) * $per_page, $per_page) as $row) {
+			$key = json_encode([$row['_parent_kind'], $row['parent']]);
+			if ($row['_parent_kind'] !== '' && $key !== $previous_relationship) {
+				$label = $row['_parent_kind'] === 'svm' ? _('SVM') : _('Node');
+				$label .= ': '.($row['parent'] !== '' ? $row['parent'] : _('Unavailable'));
+				$group = $relationships[$key];
+				$content = [new \CSpan($label), (new \CSpan(sprintf(_('%1$s resources'), $group['count'])))
+					->addClass('netapp-monitoring-location-count')];
+				if ($group['stale']) {
+					$content[] = (new \CSpan(_('Stale')))->addClass('netapp-monitoring-stale-badge')
+						->setAttribute('title', _('SVM ownership uses the last collected value.'));
+				}
+				$table->addRow((new \CRow([(new \CCol((new \CDiv($content))
+					->addClass('netapp-monitoring-location-group')))->setColSpan(5)]))
+					->addClass('netapp-monitoring-inventory-group-row')->setAttribute('data-netapp-inventory-group', $row['_parent_kind']));
+			}
+			$previous_relationship = $key;
 			$m = $row['metrics'];
 			$properties = [];
 			$property_keys = ['version', 'location', 'membership', 'uptime', 'controller.over_temperature', 'comment', 'description',
@@ -407,7 +439,8 @@ class NetAppRenderer {
 		}
 		$table->setPageNavigation($pager);
 		return new \CDiv([
-			(new \CDiv($table))->addClass('dashboard-widget-problems'),
+			(new \CDiv($table))->addClass('dashboard-widget-problems')->setAttribute('data-netapp-problems', '1'),
+			($widget['info'] ?? '') !== '' ? (new \CDiv($widget['info']))->addClass('netapp-monitoring-note') : null,
 			(new \CDiv(new \CLink(_('View all problems'), $url)))->addClass(ZBX_STYLE_RIGHT)
 		]);
 	}

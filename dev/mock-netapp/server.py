@@ -146,14 +146,14 @@ def make_server(host="0.0.0.0", port=8080, username="mock", password="mock", fix
 
         def reply(self, code, payload, authenticate=False):
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            if authenticate:
-                self.send_header("WWW-Authenticate", 'Basic realm="NetApp module demo"')
-            self.end_headers()
             try:
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                if authenticate:
+                    self.send_header("WWW-Authenticate", 'Basic realm="NetApp module demo"')
+                self.end_headers()
                 self.wfile.write(body)
             except (BrokenPipeError, ConnectionResetError):
                 pass  # A timeout client may have disconnected during recovery.

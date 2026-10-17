@@ -42,6 +42,8 @@ Native problem and history pages enforce their own permissions.
 - The Problems tab uses Zabbix's native Problems widget with recent/recovered events, timeline,
   operational data, the signed-in user's permitted problem actions, and pagination following
   the user's **Rows per page** setting. Zabbix's global search limit caps the result set.
+  Matching symptoms remain visible. When a cause and its symptoms share a page, the symptoms
+  can be expanded beneath that cause; symptoms whose cause is on another page stay standalone.
 - Search, sorting, pagination using the user's rows-per-page setting, and blue/dark theme support.
 - Host inventory notes in the host list and detail pages, with notes included in host search.
 - Full-width expandable resource metrics, grouped into responsive panels.
@@ -78,6 +80,11 @@ counts. The template does not expose aggregate or disk capacity, disk models, sn
 SnapMirror details, so the module does not invent these metrics.
 
 Volume capacity and LUN capacity are separate views of storage; do not add them together.
+Inventory tables group volumes and LUNs by SVM, and disks, Ethernet ports and FC ports by
+node using the existing template values and item keys. Missing ownership appears as
+Unavailable; retained SVM ownership is marked Stale when collection fails. Groups remain
+together when sorting, and repeat their heading when continued on another page. Resource
+counts reflect the current search across all pages; group headings do not consume page rows.
 Volume available space is the value reported by the template, rather than an assumed size-minus-used
 value. Performance metrics are already calculated by the template; the frontend does not derive
 rates from cumulative counters. Calculated latency values in the supplied template are already
@@ -95,6 +102,8 @@ It does not infer failure from old scalar timestamps: unchanged values may be in
 discarded by template heartbeat preprocessing. Use native Latest data to investigate the
 reported diagnostics. Collection warnings clear when HTTP checks recover.
 The Refresh action reloads stored Zabbix data; it does not execute HTTP checks or trigger discovery.
+Live search updates the detail status bar, collection warning, counters, and results from the same
+Zabbix snapshot. Failed or incomplete searches preserve the last consistent display.
 
 ## Development verification
 

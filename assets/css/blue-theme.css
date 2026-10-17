@@ -62,7 +62,8 @@
 .netapp-monitoring-metric-group > table th:last-child { width: 13%; }
 .netapp-monitoring-context-notes { color: var(--netapp-monitoring-muted); font-size: 11px; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
 .netapp-monitoring-host-notes-preview { color: var(--netapp-monitoring-muted); font-size: 12px; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 420px; margin-top: 6px; }
-#netapp-monitoring-hosts-table .netapp-monitoring-location-row td {
+#netapp-monitoring-hosts-table .netapp-monitoring-location-row td,
+.netapp-monitoring-inventory-group-row td {
 	padding: 8px 12px;
 	background-color: var(--netapp-monitoring-surface);
 	border-top: 1px solid var(--netapp-location-border);

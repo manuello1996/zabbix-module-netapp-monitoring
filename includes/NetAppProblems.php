@@ -23,7 +23,8 @@ class NetAppProblems {
 			'show' => TRIGGERS_OPTION_RECENT_PROBLEM,
 			'groupids' => null, 'exclude_groupids' => null, 'hostids' => $hostids,
 			'name' => $search, 'severities' => [], 'evaltype' => TAG_EVAL_TYPE_AND_OR,
-			'tags' => [], 'show_symptoms' => false, 'show_suppressed' => false,
+			// Keep symptoms whose cause is outside the selected hosts/search/page.
+			'tags' => [], 'show_symptoms' => true, 'show_suppressed' => false,
 			'acknowledgement_status' => ZBX_ACK_STATUS_ALL, 'acknowledged_by_me' => 0,
 			'show_opdata' => OPERATIONAL_DATA_SHOW_SEPARATELY
 		];
@@ -34,6 +35,10 @@ class NetAppProblems {
 		$pages = max(1, (int) ceil($total / $lines));
 		$page = min(max(1, $page), $pages);
 		$data['problems'] = array_slice($data['problems'], ($page - 1) * $lines, min($lines, $total - ($page - 1) * $lines), true);
+		$page_eventids = array_keys($data['problems']);
+		// Enrich the entire event page together, including symptoms. Native makeData
+		// therefore supplies the combined users, correlations, actions and triggers
+		// without the widget's unscoped secondary symptom queries.
 		$data = CScreenProblem::makeData($data, [
 			'show' => TRIGGERS_OPTION_RECENT_PROBLEM, 'details' => 0,
 			'show_opdata' => OPERATIONAL_DATA_SHOW_SEPARATELY
@@ -46,17 +51,40 @@ class NetAppProblems {
 				$problem['symptoms'] = [];
 			}
 			unset($problem);
+			foreach ($data['problems'] as $eventid => $problem) {
+				$cause_eventid = (string) ($problem['cause_eventid'] ?? '0');
+				if ($cause_eventid === '0') {
+					continue;
+				}
+				if (isset($data['problems'][$cause_eventid])
+						&& (string) $data['problems'][$cause_eventid]['cause_eventid'] === '0') {
+					$data['problems'][$cause_eventid]['symptoms'][] = $problem;
+					$data['problems'][$cause_eventid]['symptom_count']++;
+					$data['show_three_columns'] = true;
+					unset($data['problems'][$eventid]);
+				}
+				else {
+					$data['show_two_columns'] = true;
+				}
+			}
+		}
+		$info = $has_more
+			? _s('Results are limited to the latest %1$s matching problems. Refine your search or open all problems.', $limit)
+			: '';
+		if ($data['show_three_columns']) {
+			$info = trim($info.' '._('Symptom counts refer to matching events on this page.'));
 		}
 		return $data + [
 			'has_more' => $has_more,
 			'page' => $page, 'pages' => $pages, 'total' => $total, 'per_page' => $lines,
+			'page_eventids' => $page_eventids,
 			'fields' => [
 				'show' => TRIGGERS_OPTION_RECENT_PROBLEM, 'show_tags' => SHOW_TAGS_NONE,
 				'show_timeline' => ZBX_TIMELINE_ON, 'highlight_row' => ZBX_HIGHLIGHT_OFF,
 				'tags' => [], 'tag_name_format' => TAG_NAME_FULL, 'tag_priority' => '',
 				'show_opdata' => OPERATIONAL_DATA_SHOW_SEPARATELY
 			],
-			'info' => $has_more ? _s('Results are limited to the latest %1$s matching problems. Refine your search or open all problems.', $limit) : '',
+			'info' => $info,
 			'sortfield' => 'clock', 'sortorder' => ZBX_SORT_DOWN,
 			'config' => [
 				'problem_ack_style' => CSettingsHelper::get(CSettingsHelper::PROBLEM_ACK_STYLE),
