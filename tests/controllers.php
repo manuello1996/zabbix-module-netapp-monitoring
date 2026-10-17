@@ -1,12 +1,30 @@
 <?php
 /** Run: php tests/controllers.php. Isolated action tests; no Zabbix server required. */
 namespace Modules\NetAppMonitoring\Includes {
+	class NetAppProblems {
+		public static array $calls = [];
+		public static function forHosts(array $hostids, string $search, int $lines, int $page): array {
+			self::$calls[] = [$hostids, $search, $lines, $page];
+			return ['native_widget' => true, 'page' => $page];
+		}
+		public static function data(string $hostid, string $search, int $lines, int $page): array {
+			self::$calls[] = [$hostid, $search, $lines, $page];
+			return ['native_widget' => true];
+		}
+	}
 	class NetAppCollector {
 		public static array $hosts = [];
 		public static array $calls = [];
-		public static function listHosts(): array {
-			self::$calls[] = ['listHosts'];
-			return self::$hosts;
+		public static array $groupCalls = [];
+		public static function locationProblems(array $groups): array {
+			self::$groupCalls[] = ['groups' => $groups, 'calls_before' => self::$calls];
+			return $groups;
+		}
+		public static function listHosts(?array $scope = null): array {
+			self::$calls[] = $scope === null ? ['listHosts'] : ['listHosts', $scope];
+			return $scope === null ? self::$hosts : array_filter(self::$hosts, static function ($host) use ($scope) {
+				return count(array_intersect($host['groupids'] ?? [], $scope)) > 0;
+			});
 		}
 		public static function getHost(string $id): ?array {
 			self::$calls[] = ['getHost', $id];
@@ -70,7 +88,22 @@ namespace {
 			return self::$allowed;
 		}
 	}
+	class API {
+		public static array $groups = [];
+		public static array $calls = [];
+		public static function HostGroup() { return new self(); }
+		public function get(array $options): array {
+			self::$calls[] = $options;
+			return array_values(array_filter(self::$groups, static function ($group) use ($options) {
+				return in_array($group['groupid'], $options['groupids'], true);
+			}));
+		}
+	}
+	function getSubGroups(array $ids): array {
+		return in_array('1', $ids, true) ? array_merge($ids, ['2']) : $ids;
+	}
 	if (!function_exists('_')) { function _($text) { return $text; } }
+	require __DIR__.'/../includes/NetAppLocationGroups.php';
 	require __DIR__.'/../actions/CControllerNetAppList.php';
 	require __DIR__.'/../actions/CControllerNetAppView.php';
 
@@ -104,6 +137,9 @@ namespace {
 	expect(array_keys($data['snapshots']), [40, 10], 'Only current page has snapshots');
 	expect($data['total_hosts'], 4, 'Total before pagination');
 	expect($data['page'], 1, 'Default page');
+	expect($data['tab'], 'hosts', 'Main default tab is hosts');
+	expect($controller->rules['filter_groupids'], 'array_db hstgrp.groupid', 'Group IDs validated against host groups');
+	expect($controller->rules['tab'], 'in hosts,problems', 'Main tabs allowlisted');
 	expect($controller->csrfDisabled, true, 'Read-only action permits GET');
 	expect(CWebUser::$checks, [CRoleHelper::UI_MONITORING_LATEST_DATA], 'Monitoring role required');
 	expect($controller->rules['search'], 'string', 'Search validation');
@@ -170,5 +206,55 @@ namespace {
 		expect(NetAppCollector::$calls, [], 'Invalid input never reaches collector');
 		expect(CWebUser::$checks, [], 'Validation precedes permissions');
 	}
+	\Modules\NetAppMonitoring\Includes\NetAppProblems::$calls = [];
+	$data = (new CControllerNetAppView(['hostid' => '20', 'tab' => 'problems', 'search' => '  disk  ']))->run()->data;
+	expect(\Modules\NetAppMonitoring\Includes\NetAppProblems::$calls, [['20', 'disk', 2, 1]],
+		'Native problems receive authorized host scope, trimmed search and profile row limit');
+	expect($data['problem_widget'], ['native_widget' => true], 'Native widget data reaches the view');
+	\Modules\NetAppMonitoring\Includes\NetAppProblems::$calls = [];
+	(new CControllerNetAppView(['hostid' => '20', 'tab' => 'volumes']))->run();
+	expect(\Modules\NetAppMonitoring\Includes\NetAppProblems::$calls, [], 'Other tabs do not prepare the Problems widget');
+	// Main page groups are scoped before search, hierarchy aggregation and pagination.
+	NetAppCollector::$hosts = [
+		['hostid' => '1', 'name' => 'Zulu', 'host' => 'z', 'groupids' => ['1'], 'location_path' => ['CH', 'Zurich']],
+		['hostid' => '2', 'name' => 'Alpha', 'host' => 'a', 'groupids' => ['2'], 'location_path' => ['CH', 'Zurich']],
+		['hostid' => '3', 'name' => 'Other', 'host' => 'o', 'groupids' => ['3'], 'location_path' => ['US']],
+		['hostid' => '4', 'name' => 'Beta', 'host' => 'b', 'groupids' => ['2'], 'location_path' => ['CH', 'Zurich'],
+			'inventory' => ['notes' => 'Critical cabinet']]
+	];
+	API::$groups = [['groupid' => '1', 'name' => 'Sites'], ['groupid' => '3', 'name' => 'Other']];
+	NetAppCollector::$calls = [];
+	$data = (new CControllerNetAppList(['filter_groupids' => ['1']]))->run()->data;
+	expect(array_column($data['hosts'], 'hostid'), ['2', '4'], 'Descendant group hosts sorted and sliced');
+	expect($data['total_hosts'], 3, 'Selected parent group includes descendants');
+	expect(NetAppCollector::$calls, [['listHosts', ['1', '2']], ['collect', '2'], ['collect', '4']],
+		'Group selection scopes collection before page slicing');
+	expect($data['problem_hostids'], ['2', '4', '1'], 'Aggregate problems include all matching pages');
+	$location = reset($data['location_groups']);
+	expect($location['count'], 3, 'Location parent count includes off-page matching hosts only');
+	$group_call = end(NetAppCollector::$groupCalls);
+	$group_scope = reset($group_call['groups']);
+	expect($group_scope['hostids'], ['2', '4', '1'], 'Group problems include hosts outside current page');
+	expect($group_call['calls_before'], [['listHosts', ['1', '2']]], 'Group aggregation precedes snapshots and pagination');
+	NetAppCollector::$calls = [];
+	$data = (new CControllerNetAppList(['filter_groupids' => ['999']]))->run()->data;
+	expect($data['hosts'], [], 'Inaccessible group cannot widen to all hosts');
+	expect(NetAppCollector::$calls, [['listHosts', ['0']]], 'Inaccessible group uses explicit no-match scope');
+	$data = (new CControllerNetAppList(['search' => 'critical']))->run()->data;
+	expect(array_column($data['hosts'], 'hostid'), ['4'], 'Name search retains inventory notes compatibility');
+	\Modules\NetAppMonitoring\Includes\NetAppProblems::$calls = [];
+	NetAppCollector::$calls = [];
+	NetAppCollector::$groupCalls = [];
+	$data = (new CControllerNetAppList(['tab' => 'problems', 'filter_groupids' => ['1'], 'page' => 2]))->run()->data;
+	expect(NetAppCollector::$calls, [['listHosts', ['1', '2']]], 'Main Problems skips host snapshot collection');
+	expect(NetAppCollector::$groupCalls, [], 'Main Problems avoids redundant location badge queries');
+	expect(\Modules\NetAppMonitoring\Includes\NetAppProblems::$calls, [[['2', '4', '1'], '', 2, 2]],
+		'Aggregate Problems receives full filtered scope and requested event page');
+	expect($data['problem_widget'], ['native_widget' => true, 'page' => 2], 'Aggregate widget reaches main view');
+	\Modules\NetAppMonitoring\Includes\NetAppProblems::$calls = [];
+	$data = (new CControllerNetAppList(['tab' => 'problems', 'search' => 'critical', 'page' => 99]))->run()->data;
+	expect(\Modules\NetAppMonitoring\Includes\NetAppProblems::$calls, [[['4'], '', 2, 99]],
+		'Main Name query scopes hosts, leaving event names unrestricted and event page untruncated');
+	expect($data['page'], 99, 'Main response follows event widget page rather than host-list page count');
 	echo "Controller checks passed: $count\n";
 }

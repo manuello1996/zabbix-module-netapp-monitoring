@@ -1,4 +1,7 @@
 html[theme="dark-theme"], html[theme="hc-dark"] {
+	--netapp-location-border: #3d3d3d;
+	--netapp-location-muted: #a6a6a6;
+	--netapp-location-accent: #4796c6;
 	--netapp-monitoring-bg: #2b2b2b;
 	--netapp-monitoring-border: #454545;
 	--netapp-monitoring-text: #f2f2f2;

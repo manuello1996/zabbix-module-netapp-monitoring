@@ -1,4 +1,7 @@
 :root {
+	--netapp-location-border: #e0e4e9;
+	--netapp-location-muted: #74838f;
+	--netapp-location-accent: #0275b8;
 	--netapp-monitoring-bg: #fff;
 	--netapp-monitoring-border: #e0e4e9;
 	--netapp-monitoring-text: #1f2c33;
@@ -13,6 +16,8 @@
 .netapp-monitoring-breadcrumb a { color: var(--netapp-monitoring-muted); font-weight: normal; }
 .netapp-monitoring-breadcrumb-sep { margin: 0 8px; color: var(--netapp-monitoring-muted); }
 .netapp-monitoring-topbar-context { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; }
+.netapp-monitoring-context-status { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.netapp-monitoring-context-version { white-space: nowrap; }
 .netapp-monitoring-statstrip { display: flex; flex-wrap: wrap; margin: 0 0 14px; background: var(--netapp-monitoring-bg); border: 1px solid var(--netapp-monitoring-border); border-radius: 10px; }
 .netapp-monitoring-statseg { flex: 1 1 130px; padding: 10px 18px 12px; }
 .netapp-monitoring-statseg + .netapp-monitoring-statseg { border-left: 1px solid var(--netapp-monitoring-border); }
@@ -36,14 +41,115 @@
 .netapp-monitoring-table-wrap { overflow-x: auto; }
 .netapp-monitoring-table-wrap > table > thead th { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; background: var(--netapp-monitoring-surface); }
 .netapp-monitoring-table-wrap > table > tbody > tr > td { padding-top: 12px; padding-bottom: 12px; vertical-align: top; }
-.netapp-monitoring-table-wrap details { min-width: 120px; }
-.netapp-monitoring-table-wrap details[open] { min-width: 440px; }
-.netapp-monitoring-table-wrap summary { cursor: pointer; color: var(--netapp-monitoring-accent); }
+.netapp-monitoring-table-wrap > table > tbody > .netapp-monitoring-metrics-row > td { padding: 0; }
+.netapp-monitoring-resource-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; }
+.netapp-monitoring-inline-value { color: inherit; }
+.netapp-monitoring-metrics-toggle { border: 0; background: transparent; box-shadow: none; padding: 0; height: auto; line-height: inherit; color: var(--netapp-monitoring-accent); white-space: nowrap; cursor: pointer; }
+.netapp-monitoring-metrics-toggle::before { content: '▸'; display: inline-block; margin-right: 5px; }
+.netapp-monitoring-metrics-toggle[aria-expanded="true"]::before { content: '▾'; }
+.netapp-monitoring-metrics-toggle:hover { background: transparent; color: var(--netapp-monitoring-accent); text-decoration: underline; }
+.netapp-monitoring-metrics-toggle:focus-visible { outline: 2px solid var(--netapp-monitoring-accent); outline-offset: 4px; }
+.netapp-monitoring-metrics-row[hidden] { display: none; }
+.netapp-monitoring-table-wrap > table > tbody > .netapp-monitoring-resource-expanded > td { background: var(--netapp-monitoring-surface); border-bottom: 0; }
+.netapp-monitoring-table-wrap > table > tbody > .netapp-monitoring-metrics-row > td { background: var(--netapp-monitoring-surface); }
+.netapp-monitoring-metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; }
+.netapp-monitoring-metric-group { min-width: 0; background: var(--netapp-monitoring-bg); border: 1px solid var(--netapp-monitoring-border); border-radius: 6px; overflow: hidden; }
+.netapp-monitoring-metric-group:only-child { grid-column: 1 / -1; }
+.netapp-monitoring-metric-group h5 { margin: 0; padding: 12px; border-bottom: 1px solid var(--netapp-monitoring-border); font-size: 12px; }
+.netapp-monitoring-metric-group > table { width: 100%; table-layout: fixed; }
+.netapp-monitoring-metric-group > table td, .netapp-monitoring-metric-group > table th { padding: 8px; white-space: normal; overflow-wrap: anywhere; }
+.netapp-monitoring-metric-group > table th:first-child { width: 38%; }
+.netapp-monitoring-metric-group > table th:last-child { width: 13%; }
+.netapp-monitoring-context-notes { color: var(--netapp-monitoring-muted); font-size: 11px; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
+.netapp-monitoring-host-notes-preview { color: var(--netapp-monitoring-muted); font-size: 12px; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 420px; margin-top: 6px; }
+#netapp-monitoring-hosts-table .netapp-monitoring-location-row td {
+	padding: 8px 12px;
+	background-color: var(--netapp-monitoring-surface);
+	border-top: 1px solid var(--netapp-location-border);
+}
+
+.netapp-monitoring-location-group {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	box-sizing: border-box;
+	padding-left: calc(var(--netapp-location-depth, 0) * 20px);
+	color: var(--netapp-monitoring-text);
+}
+
+.netapp-monitoring-location-name {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+#netapp-monitoring-hosts-table tr[hidden] {
+	display: none;
+}
+
+.netapp-monitoring-location-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 9px;
+	padding: 4px 6px;
+	border: 0;
+	background: transparent;
+	color: var(--netapp-monitoring-text);
+	text-align: left;
+	cursor: pointer;
+}
+
+.netapp-monitoring-location-toggle:hover {
+	background: var(--netapp-monitoring-bg);
+	color: var(--netapp-location-accent);
+}
+
+.netapp-monitoring-location-toggle:focus-visible {
+	outline: 2px solid var(--netapp-location-accent);
+	outline-offset: 2px;
+}
+
+.netapp-monitoring-location-chevron {
+	flex: 0 0 auto;
+	width: 6px;
+	height: 6px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(45deg);
+	margin: 0 3px 3px;
+}
+
+.netapp-monitoring-location-toggle[aria-expanded="false"] .netapp-monitoring-location-chevron {
+	transform: rotate(-45deg);
+	margin-bottom: 0;
+}
+
+.netapp-monitoring-location-count {
+	font-size: 11px;
+	color: var(--netapp-location-muted);
+}
+
+.netapp-monitoring-location-host {
+	box-sizing: border-box;
+	padding-left: calc(var(--netapp-location-depth, 0) * 20px);
+}
+
 .netapp-monitoring-capacity { display: grid; gap: 5px; min-width: 145px; font-variant-numeric: tabular-nums; }
 .netapp-monitoring-progress { height: 6px; border-radius: 3px; overflow: hidden; background: var(--netapp-monitoring-surface); }
 .netapp-monitoring-progress-fill { height: 100%; background: var(--netapp-monitoring-good); }
 .netapp-monitoring-progress-critical { background: #d63939; }
-.netapp-monitoring-pager { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 12px 0; }
+.netapp-monitoring-stale-badge { display: inline-block; padding: 1px 5px; border: 1px solid currentColor; border-radius: 3px; color: var(--netapp-monitoring-warning); font-size: 10px; font-weight: normal; line-height: 1.3; white-space: nowrap; vertical-align: baseline; }
+.netapp-monitoring-stale-value { color: var(--netapp-monitoring-muted); }
+.netapp-monitoring-collection-marker { margin-top: 4px; color: var(--netapp-monitoring-warning); font-size: 11px; max-width: 190px; }
+.netapp-monitoring-collection-notice { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--netapp-monitoring-warning); border-left-width: 4px; border-radius: 4px; background: var(--netapp-monitoring-surface); line-height: 1.6; }
+.netapp-monitoring-collection-notice > strong { display: block; margin-bottom: 4px; color: var(--netapp-monitoring-warning); font-size: 14px; }
+.netapp-monitoring-collection-notice > a { display: inline-block; margin-top: 6px; }
+.netapp-monitoring-collection-notice details { margin-top: 10px; overflow-x: auto; }
+.netapp-monitoring-collection-notice summary { cursor: pointer; color: var(--netapp-monitoring-accent); }
+.netapp-monitoring-collection-notice table td { white-space: normal; overflow-wrap: anywhere; }
+.netapp-monitoring-capacity-stale .netapp-monitoring-progress-fill { background: var(--netapp-monitoring-muted); }
+@media (max-width: 1100px) {
+	.netapp-monitoring-metric-grid { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 640px) {
 	.netapp-monitoring-statseg { flex-basis: 100px; }
 	.netapp-monitoring-tab { padding-left: 8px; padding-right: 8px; }

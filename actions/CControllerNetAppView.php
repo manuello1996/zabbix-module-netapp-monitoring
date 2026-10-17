@@ -8,6 +8,7 @@ use CControllerResponseFatal;
 use CRoleHelper;
 use CWebUser;
 use Modules\NetAppMonitoring\Includes\NetAppCollector;
+use Modules\NetAppMonitoring\Includes\NetAppProblems;
 
 class CControllerNetAppView extends CController {
 
@@ -41,15 +42,21 @@ class CControllerNetAppView extends CController {
 	}
 
 	protected function doAction(): void {
+		$tab = $this->getInput('tab', 'overview');
+		$search = trim($this->getInput('search', ''));
+		$per_page = max(1, (int) (CWebUser::$data['rows_per_page'] ?? 50));
+		$snapshot = NetAppCollector::collect((string) $this->host['hostid']);
 		$response = new CControllerResponseData([
 			'host' => $this->host,
-			'snapshot' => NetAppCollector::collect((string) $this->host['hostid']),
-			'tab' => $this->getInput('tab', 'overview'),
-			'search' => trim($this->getInput('search', '')),
+			'snapshot' => $snapshot,
+			'problem_widget' => $tab === 'problems' && ($snapshot['problems_available'] ?? true)
+				? NetAppProblems::data((string) $this->host['hostid'], $search, $per_page, (int) $this->getInput('page', 1)) : null,
+			'tab' => $tab,
+			'search' => $search,
 			'sort' => $this->getInput('sort', 'name'),
 			'sortorder' => $this->getInput('sortorder', 'ASC'),
 			'page' => (int) $this->getInput('page', 1),
-			'per_page' => max(1, (int) (CWebUser::$data['rows_per_page'] ?? 50))
+			'per_page' => $per_page
 		]);
 		$response->setTitle(_('NetApp').' - '.$this->host['name']);
 		$this->setResponse($response);

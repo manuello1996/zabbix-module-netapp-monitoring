@@ -39,10 +39,35 @@ Native problem and history pages enforce their own permissions.
 - Nodes, SVMs, volumes, LUNs, Ethernet ports, FC ports, and hardware inventories.
 - Cluster and volume performance values with links to Zabbix history and graphs.
 - Active, unsuppressed problems linked to native Zabbix problem details.
+- The Problems tab uses Zabbix's native Problems widget with recent/recovered events, timeline,
+  operational data, the signed-in user's permitted problem actions, and pagination following
+  the user's **Rows per page** setting. Zabbix's global search limit caps the result set.
 - Search, sorting, pagination using the user's rows-per-page setting, and blue/dark theme support.
+- Host inventory notes in the host list and detail pages, with notes included in host search.
+- Full-width expandable resource metrics, grouped into responsive panels.
+- Metric labels omit the resource name inside a resource's panel. Resources whose metrics are
+  already visible in the row have no redundant expander; inline values link to their history.
+- Automatic search as you type and when host groups change; the native main filter also
+  provides optional Apply and Reset controls.
+- Main Hosts and Problems tabs share the Name and host-group filters. Name matches hosts,
+  technical host names and inventory notes. Problems aggregate the complete matching host
+  scope, including hosts beyond the current host-list page.
+- Host names open their detail page normally; right-click opens Zabbix's native host menu.
+- Paginated tables use Zabbix's native `CTableInfo` page-navigation support and `CPagerHelper`
+  controls throughout the module, preserving filters and the user's rows-per-page preference.
 
 The interface uses a context bar, summary strip, tabs, and native Zabbix tables.
 All implementation files and assets live in this directory.
+
+Set the host-level text macro `{$NETAPP.LOCATION}` to a comma-separated hierarchy, such as
+`Switzerland, Zurich, Rack 2`, to group the main Hosts table. Each ancestor shows the count
+of all matching hosts below it, including later pages. Groups can be collapsed; hosts without
+this macro appear after grouped hosts. Secret and vault macros are never used as labels.
+The host-group filter includes descendants and respects the user's accessible groups.
+Location rows also show severity badges in the Problems column. Counts include every active,
+unsuppressed event across the full matching subtree, including hosts on other pages. Shared
+events count once per ancestor, and clicking a badge opens native Problems for that subtree.
+Unavailable problem metadata displays **Unavailable** instead of a healthy zero count.
 
 ## Interpreting the data
 
@@ -57,12 +82,27 @@ value. Performance metrics are already calculated by the template; the frontend 
 rates from cumulative counters. Calculated latency values in the supplied template are already
 expressed in milliseconds.
 
-Items without a collected value display an unavailable state. Unsupported and disabled items
-retain their diagnostic status; their last numeric values should not be treated as current health.
-Check the displayed collection time and use native Latest data to investigate stale readings.
+When NetApp HTTP collection fails, the module retains the last collected values and discovered
+resources. A prominent notice on every host tab explains the outage, shows failed check details
+and the latest stored sample time; the Hosts list also marks affected hosts. Retained values,
+including capacity, carry a **Stale** label and should not be interpreted as current health.
+Enabled unsupported items keep their last sample when history exists. Items with no collected
+sample remain unavailable, and disabled items do not expose their old values.
+
+Collection status comes from the template's HTTP master items and HTTP discovery rules.
+It does not infer failure from old scalar timestamps: unchanged values may be intentionally
+discarded by template heartbeat preprocessing. Use native Latest data to investigate the
+reported diagnostics. Collection warnings clear when HTTP checks recover.
 The Refresh action reloads stored Zabbix data; it does not execute HTTP checks or trigger discovery.
 
 ## Development verification
+
+### Test without a NetApp appliance
+
+Run `python dev/mock-netapp/demo.py up` to start a containerized fake NetApp HTTP API and install
+an isolated demo host/template. Use `python dev/mock-netapp/demo.py down` to remove the fixture.
+Healthy, degraded, and empty discovery scenarios exercise real Zabbix collection and triggers.
+See [the mock setup guide](dev/mock-netapp/README.md) for commands, endpoint addresses, and cleanup behavior.
 
 Use a PHP runtime compatible with your Zabbix 7.0 frontend:
 
@@ -70,8 +110,20 @@ Use a PHP runtime compatible with your Zabbix 7.0 frontend:
 Get-ChildItem Module.php,actions,includes,views,tests -Filter *.php -Recurse | ForEach-Object { php -l $_.FullName }
 php tests/collector.php
 php tests/controllers.php
+php tests/location-groups.php
+php tests/problem-scope.php /path/to/zabbix/ui
 php tests/views-smoke.php /path/to/zabbix/ui
 ```
+
+With the isolated demo already populated and its mock service intentionally stopped,
+`tests/live-collection.php` provides a read-only outage regression against the running frontend.
+Pass the frontend UI directory and provide `ZABBIX_USER`/`ZABBIX_PASSWORD` through the test
+process environment. It checks 18 failed HTTP checks and retained demo identity, capacity and
+latency, and never changes the mock or Zabbix configuration.
+
+`tests/live-group-problems.php` checks group severity counts against the live API using
+an in-memory location tree. It uses the same UI-directory argument and credentials, requires
+an eligible NetApp host, and works regardless of mock availability without changing host macros.
 
 For the local development container, the module directory is already bind-mounted. Run checks
 using its installed PHP runtime; no downloaded local PHP runtime is required:

@@ -1,0 +1,21 @@
+services:
+  netapp-mock:
+    build: .
+    image: zabbix-netapp-module-mock:local
+    labels:
+      io.zabbix.netapp-module.fixture: "true"
+    environment:
+      NETAPP_MOCK_USERNAME: ${NETAPP_MOCK_USERNAME:-mock}
+      NETAPP_MOCK_PASSWORD: ${NETAPP_MOCK_PASSWORD:-mock}
+    ports:
+      - "127.0.0.1:18080:8080"
+    networks:
+      zabbix:
+        aliases:
+          - netapp-module-mock
+    restart: "no"
+
+networks:
+  zabbix:
+    external: true
+    name: zabbix-network

@@ -49,7 +49,8 @@ class NetAppCollector {
 		$options = [
 			'output' => ['hostid', 'host', 'name', 'status', 'description'],
 			'templateids' => array_keys($templateids), 'preservekeys' => true,
-			'selectHostGroups' => ['groupid', 'name'], 'sortfield' => 'name'
+			'selectHostGroups' => ['groupid', 'name'], 'sortfield' => 'name',
+			'selectInventory' => ['notes'], 'selectMacros' => ['macro', 'value', 'type']
 		];
 		if ($groupids !== null) {
 			$options['groupids'] = $groupids;
@@ -57,6 +58,8 @@ class NetAppCollector {
 		$hosts = API::Host()->get($options) ?: [];
 		$result = [];
 		foreach ($hosts as $host) {
+			$host['location_path'] = NetAppLocationGroups::path($host['macros'] ?? []);
+			unset($host['macros']);
 			$result[(string) $host['hostid']] = $host;
 		}
 		return self::$host_cache[$key] = $result;
@@ -103,9 +106,9 @@ class NetAppCollector {
 		}
 		foreach ($items as &$item) {
 			$item['lastclock'] = (int) ($item['lastclock'] ?? 0);
-			$item['lastvalue'] = $item['lastclock'] > 0 && (int) ($item['state'] ?? 0) === 0
-				&& (int) ($item['status'] ?? 0) === 0 ? ($item['lastvalue'] ?? null) : null;
+			$item['lastvalue'] = $item['lastclock'] > 0 && (int) ($item['status'] ?? 0) === 0 ? ($item['lastvalue'] ?? null) : null;
 			$item['value'] = $item['lastvalue'];
+			$item['stale'] = $item['lastvalue'] !== null && (int) ($item['state'] ?? 0) !== 0;
 		}
 		unset($item);
 		return array_values($items);
@@ -118,6 +121,25 @@ class NetAppCollector {
 		}
 		$result = self::normalizeItems(self::getItems($hostid));
 		$result['host'] = $host;
+		$result['collection'] = self::getCollection($hostid, $result['lastclock']);
+		if ($result['collection']['status'] === 'failed') {
+			// A failed request can also leave dependent items in a supported state.
+			// Conservatively mark retained values as potentially stale across this host.
+			foreach ($result['cluster'] as &$item) {
+				$item['stale'] = $item['lastvalue'] !== null && (int) ($item['status'] ?? 0) === 0;
+			}
+			unset($item);
+			foreach ($result['entities'] as &$rows) {
+				foreach ($rows as &$row) {
+					foreach ($row['metrics'] as &$item) {
+						$item['stale'] = $item['lastvalue'] !== null && (int) ($item['status'] ?? 0) === 0;
+					}
+					unset($item);
+				}
+				unset($row);
+			}
+			unset($rows);
+		}
 		$problems = API::Problem()->get([
 			'output' => ['eventid', 'objectid', 'name', 'severity', 'clock', 'acknowledged', 'suppressed'],
 			'hostids' => [$hostid], 'recent' => false, 'suppressed' => false,
@@ -136,6 +158,86 @@ class NetAppCollector {
 		if ((int) $host['status'] !== 0) {
 			$result['warnings'][] = 'Monitoring is disabled for this host.';
 		}
+		return $result;
+	}
+
+	/** Lightweight full-scope group counts; do not collect off-page host metrics. */
+	public static function locationProblems(array $groups): array {
+		if (!$groups) { return []; }
+		$hostids = [];
+		foreach ($groups as $group) {
+			foreach ($group['hostids'] as $hostid) { $hostids[(string) $hostid] = true; }
+		}
+		$hostids = array_values(array_intersect(array_map('strval', array_keys($hostids)),
+			array_column(self::listHosts(), 'hostid')));
+		if (!$hostids) { return NetAppLocationGroups::withProblems($groups, [], []); }
+		// No limit: badges describe every active unsuppressed event in the group.
+		$problems = API::Problem()->get(['output' => ['eventid', 'objectid', 'severity'],
+			'hostids' => $hostids, 'recent' => false, 'suppressed' => false]);
+		if (!is_array($problems) || !$problems) {
+			return NetAppLocationGroups::withProblems($groups, $problems, []);
+		}
+		$triggers = API::Trigger()->get(['output' => ['triggerid'],
+			'triggerids' => array_values(array_unique(array_column($problems, 'objectid'))),
+			'selectHosts' => ['hostid']]);
+		// A missing trigger relation must not be rendered as a zero-problem group.
+		if (is_array($triggers) && array_diff(array_column($problems, 'objectid'), array_column($triggers, 'triggerid'))) {
+			$triggers = false;
+		}
+		return NetAppLocationGroups::withProblems($groups, $problems, $triggers);
+	}
+
+	/** Exact HTTP agent keys in the reference template; raw payloads are never read. */
+	public static function httpKeys(bool $discovery = false): array {
+		return $discovery ? [
+			'netapp.chassis.discovery', 'netapp.disks.discovery', 'netapp.luns.discovery',
+			'netapp.nodes.discovery', 'netapp.ports.ether.discovery', 'netapp.ports.fc.discovery',
+			'netapp.svms.discovery', 'netapp.volumes.discovery'
+		] : [
+			'netapp.chassis.get', 'netapp.cluster.get', 'netapp.disks.get', 'netapp.frus.get',
+			'netapp.luns.get', 'netapp.nodes.get', 'netapp.ports.eth.get', 'netapp.ports.fc.get',
+			'netapp.svms.get', 'netapp.volumes.get'
+		];
+	}
+
+	public static function getCollection(string $hostid, int $lastclock = 0): array {
+		$host = self::getHost($hostid);
+		if ($host === null) {
+			return self::collectionState(false, false);
+		}
+		$options = ['output' => ['itemid', 'name', 'key_', 'type', 'status', 'state', 'error'],
+			'hostids' => [$hostid]];
+		$items = API::Item()->get($options + ['filter' => ['type' => 19, 'key_' => self::httpKeys()]]);
+		$rules = API::DiscoveryRule()->get($options + ['filter' => ['type' => 19, 'key_' => self::httpKeys(true)]]);
+		return self::collectionState($items, $rules, (int) $host['status'], $lastclock);
+	}
+
+	/** Current check state, independent of heartbeat-discarded scalar timestamps. */
+	public static function collectionState($items, $rules, int $host_status = 0, int $lastclock = 0): array {
+		$result = ['status' => 'unknown', 'failed' => [], 'failed_count' => 0, 'total' => 0,
+			'lastclock' => $lastclock, 'host_disabled' => $host_status !== 0];
+		$disabled = 0;
+		foreach (['item' => $items, 'discovery' => $rules] as $kind => $checks) {
+			foreach (is_array($checks) ? $checks : [] as $check) {
+				if (!in_array($check['key_'], self::httpKeys($kind === 'discovery'), true)
+						|| (int) ($check['type'] ?? -1) !== 19) {
+					continue;
+				}
+				if ((int) $check['status'] !== 0) {
+					$disabled++;
+					continue;
+				}
+				$result['total']++;
+				if ((int) $check['state'] !== 0) {
+					$result['failed'][] = ['itemid' => $check['itemid'], 'name' => $check['name'],
+						'key_' => $check['key_'], 'error' => $check['error'] ?? '', 'kind' => $kind];
+				}
+			}
+		}
+		$result['failed_count'] = count($result['failed']);
+		$result['status'] = $host_status !== 0 ? 'disabled' : ($result['failed_count'] ? 'failed'
+			: (!is_array($items) || !is_array($rules) ? 'unknown'
+				: ($result['total'] ? 'ok' : ($disabled ? 'disabled' : 'unknown'))));
 		return $result;
 	}
 
@@ -186,7 +288,7 @@ class NetAppCollector {
 			$result['warnings'][] = 'No supported NetApp scalar monitoring items are accessible on this host.';
 		}
 		if ($unsupported) {
-			$result['warnings'][] = $unsupported.' monitoring item(s) are unsupported; inspect Latest data for details.';
+			$result['warnings'][] = $unsupported.' monitoring item(s) are unsupported; last collected values are shown where available. Inspect Latest data for details.';
 		}
 		if ($missing) {
 			$result['warnings'][] = $missing.' monitoring item(s) have no collected value yet.';
