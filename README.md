@@ -46,7 +46,8 @@ Native problem and history pages enforce their own permissions.
 - Host inventory notes in the host list and detail pages, with notes included in host search.
 - Full-width expandable resource metrics, grouped into responsive panels.
 - Metric labels omit the resource name inside a resource's panel. Resources whose metrics are
-  already visible in the row have no redundant expander; inline values link to their history.
+  already visible in the row have no redundant expander; clicking a latest value opens Zabbix's native item menu, with Item, Graph (numeric items),
+  Values, and 500 latest values, subject to the user's permissions and history retention.
 - Automatic search as you type and when host groups change; the native main filter also
   provides optional Apply and Reset controls.
 - Main Hosts and Problems tabs share the Name and host-group filters. Name matches hosts,

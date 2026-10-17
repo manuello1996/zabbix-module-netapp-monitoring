@@ -27,6 +27,20 @@
 	const install = () => {
 		const action = new URL(window.location.href).searchParams.get('action');
 		if (!['netapp.monitoring.list', 'netapp.monitoring.view'].includes(action)) return;
+		if (typeof getMenuPopupItem === 'function') {
+			const nativeItemMenu = getMenuPopupItem;
+			window.getMenuPopupItem = options => {
+				const sections = nativeItemMenu(options);
+				const sourceAction = new URLSearchParams((options.backurl || '').split('?')[1]).get('action');
+				if (!['netapp.monitoring.list', 'netapp.monitoring.view'].includes(sourceAction)) return sections;
+				const allowed = new Set([t('Item'), t('Graph'), t('Values'), t('500 latest values')]);
+				return sections.map(section => ({...section, items: section.items.filter(item =>
+					allowed.has(item.label) && (item.label !== t('Graph') || options.showGraph))}))
+					.filter(section => section.items.length)
+					.sort((a, b) => Number(b.items.some(item => item.label === t('Item')))
+						- Number(a.items.some(item => item.label === t('Item'))));
+			};
+		}
 		const pageView = typeof view === 'object' && view !== null ? view : (window.view ??= {});
 		const open = (action, data, dialogueid, target) => {
 			const originalUrl = window.location.href;

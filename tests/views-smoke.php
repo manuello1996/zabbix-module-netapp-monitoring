@@ -47,10 +47,22 @@ $loader->addNamespace('Widgets\\Problems', [$zabbix.'/widgets/problems']);
 $loader->addNamespace('Modules\\NetAppMonitoring', [dirname(__DIR__)]);
 $loader->register();
 
+class NetAppViewHarness {
+	public static array $scripts = [];
+	private string $name;
+	public function addJsFile(string $script): self {
+		self::$scripts[$this->name][$script] = true;
+		return $this;
+	}
+	public function render(string $name, array $data): string {
+		$this->name = $name;
+		ob_start();
+		try { require __DIR__.'/../views/'.$name.'.php'; return ob_get_contents(); }
+		finally { ob_end_clean(); }
+	}
+}
 function render(string $name, array $data): string {
-	ob_start();
-	try { require __DIR__.'/../views/'.$name.'.php'; return ob_get_contents(); }
-	finally { ob_end_clean(); }
+	return (new NetAppViewHarness())->render($name, $data);
 }
 function check(bool $ok, string $message): void {
 	global $checks;
@@ -174,6 +186,12 @@ check(Modules\NetAppMonitoring\Includes\NetAppRenderer::metricName('Other: State
 	'Unrelated prefixes are preserved');
 libxml_clear_errors();
 libxml_use_internal_errors($previous_errors);
+$latest_link = (string) Modules\NetAppMonitoring\Includes\NetAppRenderer::inlineValue(item('Read latency', '0.8', '!ms', 0));
+check(strpos($latest_link, '&quot;type&quot;:&quot;item&quot;') !== false
+	&& strpos($latest_link, '&quot;context&quot;:&quot;host&quot;') !== false,
+	'Latest values open native host item menus');
+check(strpos($latest_link, 'history.php') === false && strpos($latest_link, 'aria-haspopup="true"') !== false,
+	'Latest value opens an accessible menu instead of navigating to history');
 $no_parent = $base;
 $no_parent['tab'] = 'nodes';
 $no_parent['snapshot']['entities']['nodes'][0]['parent'] = '';
@@ -192,6 +210,12 @@ $list['location_groups'] = Modules\NetAppMonitoring\Includes\NetAppLocationGroup
 	[['triggerid' => '88', 'hosts' => [['hostid' => '20']]], ['triggerid' => '89', 'hosts' => [['hostid' => '21']]]]
 );
 $outputs['list'] = render('netapp.monitoring.list', $list);
+foreach (['netapp.monitoring.list', 'netapp.monitoring.view'] as $view_name) {
+	foreach (['multilineinput.js', 'items.js', 'class.tagfilteritem.js'] as $dependency) {
+		check(isset(NetAppViewHarness::$scripts[$view_name][$dependency]),
+			$view_name.' loads native item dialog dependency '.$dependency);
+	}
+}
 check(strpos($outputs['list'], '<script>') === false, 'List escapes hostile host/search');
 check(strpos($outputs['list'], 'Fixture inventory notes') !== false, 'List displays inventory notes');
 check(strpos($outputs['list'], 'Go to next page, 2') !== false, 'List has native next page link');

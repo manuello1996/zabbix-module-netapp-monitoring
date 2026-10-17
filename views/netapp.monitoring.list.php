@@ -4,6 +4,11 @@ use Modules\NetAppMonitoring\Includes\NetAppPager;
 use Modules\NetAppMonitoring\Includes\NetAppLocationGroups;
 use Widgets\Problems\Includes\WidgetProblems;
 
+// Native Item dialogs depend on these parent-page scripts.
+$this->addJsFile('multilineinput.js');
+$this->addJsFile('items.js');
+$this->addJsFile('class.tagfilteritem.js');
+
 $tab = $data['tab'] ?? 'hosts';
 $list_url = static function (array $args = []) use ($data, $tab): CUrl {
 	$url = (new CUrl('zabbix.php'))->setArgument('action', 'netapp.monitoring.list');
@@ -125,17 +130,17 @@ foreach ($data['hosts'] as $host) {
 	$ancestors = array_map([NetAppLocationGroups::class, 'key'], NetAppLocationGroups::ancestors($host['location_path'] ?? []));
 	$name = (new CLink($host['name'], R::url(['hostid' => $hostid])))
 		->setMenuPopup(CMenuPopupHelper::getHost($hostid))->setAttribute('data-netapp-host-link', '1');
-	$name_cell = (new CDiv([$name, (new CDiv(R::value($snapshot['cluster']['name'] ?? null)))
+	$name_cell = (new CDiv([$name, (new CDiv(R::inlineValue($snapshot['cluster']['name'] ?? null)))
 		->addClass('netapp-monitoring-muted')]))->addClass('netapp-monitoring-location-host')
 		->setAttribute('style', '--netapp-location-depth: '.count($ancestors));
 	$table->addRow((new CRow(array_merge([
 		$name_cell,
 		(new CDiv($host['inventory']['notes'] ?? ''))->addClass('netapp-monitoring-host-notes-preview')
 			->setTitle($host['inventory']['notes'] ?? ''),
-		new CDiv([R::value($snapshot['cluster']['status'] ?? null, true),
+		new CDiv([R::inlineValue($snapshot['cluster']['status'] ?? null, true),
 			R::collectionMarker($snapshot),
 			(int) $host['status'] !== 0 ? (new CDiv(_('Disabled')))->addClass('netapp-monitoring-muted') : null]),
-		R::value($snapshot['cluster']['version'] ?? null)
+		R::inlineValue($snapshot['cluster']['version'] ?? null)
 	], $counts, [
 		$problem_badge($snapshot, $hostid), new CLink(_('Latest data'), R::latest($hostid))
 	])))->setAttribute('data-location-ancestors', json_encode($ancestors)));

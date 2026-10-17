@@ -1,6 +1,11 @@
 <?php declare(strict_types = 0);
 use Modules\NetAppMonitoring\Includes\NetAppRenderer as R;
 
+// Native Item dialogs depend on these parent-page scripts.
+$this->addJsFile('multilineinput.js');
+$this->addJsFile('items.js');
+$this->addJsFile('class.tagfilteritem.js');
+
 $page = (new CHtmlPage())->setTitle(_('NetApp monitoring'))->setWebLayoutMode(CViewHelper::loadLayoutMode());
 if ($data['host'] === null) {
 	$page->addItem((new CTableInfo())->setNoDataMessage(_('Select a NetApp host from the monitoring list.')))->show();
@@ -23,9 +28,9 @@ $page->addItem((new CDiv([
 		$notes !== '' ? (new CTag('small', true, $notes))->addClass('netapp-monitoring-context-notes') : null,
 		(new CSpan([
 			new CSpan((int) $data['host']['status'] === 0 ? _('Enabled') : _('Disabled')),
-			R::value($snapshot['cluster']['status'] ?? null, true)
+			R::inlineValue($snapshot['cluster']['status'] ?? null, true)
 		]))->addClass('netapp-monitoring-context-status'),
-		(new CSpan([_('Version').': ', R::value($snapshot['cluster']['version'] ?? null)]))
+		(new CSpan([_('Version').': ', R::inlineValue($snapshot['cluster']['version'] ?? null)]))
 			->addClass('netapp-monitoring-context-version')
 	]))->addClass('netapp-monitoring-topbar-context')
 ]))->addClass('netapp-monitoring-topbar'));

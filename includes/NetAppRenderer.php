@@ -135,11 +135,9 @@ class NetAppRenderer {
 		$used = NetAppFormatter::bytes($capacity['used'] ?? null);
 		$size = NetAppFormatter::bytes($capacity['size'] ?? null);
 		$items = [new \CSpan([
-			$used_item ? (new \CLink($used, self::historyUrl($used_item)))->setTitle(_('Used size history'))
-				->addClass('netapp-monitoring-inline-value') : $used,
+			$used_item ? self::itemMenu($used, $used_item) : $used,
 			' / ',
-			$size_item ? (new \CLink($size, self::historyUrl($size_item)))->setTitle(_('Size history'))
-				->addClass('netapp-monitoring-inline-value') : $size
+			$size_item ? self::itemMenu($size, $size_item) : $size
 		])];
 		if ($percent !== null) {
 			$items[] = new \CSpan(NetAppFormatter::percent($percent));
@@ -171,9 +169,16 @@ class NetAppRenderer {
 			->setArgument('itemids', [$item['itemid']]);
 	}
 
+	/** Use Zabbix's permission-aware item menu for every latest value. */
+	public static function itemMenu($label, array $item): \CLinkAction {
+		$backurl = (new \CUrl('zabbix.php'))->formatGetArguments()->getUrl();
+		return (new \CLinkAction($label))->setMenuPopup(\CMenuPopupHelper::getItem([
+			'itemid' => $item['itemid'], 'context' => 'host', 'backurl' => $backurl
+		]))->setTitle(_('Item actions'))->addClass('netapp-monitoring-inline-value');
+	}
+
 	public static function inlineValue(?array $item, bool $state = false) {
-		return $item ? (new \CLink(self::value($item, $state), self::historyUrl($item)))
-			->setTitle(_('History'))->addClass('netapp-monitoring-inline-value') : self::value(null);
+		return $item ? self::itemMenu(self::value($item, $state), $item) : self::value(null);
 	}
 
 	public static function metricTable(array $metrics, string $search = '', string $object = ''): \CTableInfo {
@@ -185,7 +190,7 @@ class NetAppRenderer {
 			if ($search !== '' && stripos($item['name'].' '.$key.' '.NetAppFormatter::itemValue($item), $search) === false) {
 				continue;
 			}
-			$table->addRow([self::metricName($item['name'], $object), self::value($item, strpos($key, 'state') !== false || $key === 'status' || $key === 'controller.over_temperature'),
+			$table->addRow([self::metricName($item['name'], $object), self::inlineValue($item, strpos($key, 'state') !== false || $key === 'status' || $key === 'controller.over_temperature'),
 				self::clock($item['lastclock']), new \CLink(_('History'), self::historyUrl($item))]);
 		}
 		return $table;
