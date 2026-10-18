@@ -9,6 +9,8 @@ const timers = new Map();
 const requests = [];
 let groupChange;
 let timerId = 0;
+let now = 1000;
+let lastDelay;
 const status = {textContent: '', dataset: {searching: 'Searching', error: 'Failed'}};
 const refresh = {setAttribute(name, value) { this[name] = value; }};
 let results;
@@ -33,7 +35,7 @@ const document = {
 	addEventListener(name, callback) { listeners.set(name, callback); },
 	getElementById(id) { return id === 'netapp-host-summary' ? summary : results; }, querySelector(selector) { return selector === '[data-netapp-main-filter] form' ? form : refresh; }
 };
-vm.runInNewContext(source, {document, window, URL, URLSearchParams, AbortController,
+vm.runInNewContext(source, {document, window, URL, URLSearchParams, AbortController, Date: class extends Date { static now() { return now; } },
 	jQuery(target) { assert.equal(target, form); return {on(name, selector, callback) { groupChange = callback; }}; },
 	FormData: class { constructor(form) { return Object.entries(form.values); } },
 	DOMParser: class { parseFromString(text) { return {getElementById(id) {
@@ -43,7 +45,7 @@ vm.runInNewContext(source, {document, window, URL, URLSearchParams, AbortControl
 		if (text === 'counted results') replacement.attributes['data-netapp-search-message'] = '2 of 4 resources match';
 		return replacement;
 	}}; } },
-	setTimeout(fn) { const id = ++timerId; timers.set(id, fn); return id; },
+	setTimeout(fn, delay) { lastDelay = delay; const id = ++timerId; timers.set(id, fn); return id; },
 	clearTimeout(id) { timers.delete(id); },
 	fetch(url, options) { return new Promise((resolve, reject) => requests.push({url, options, resolve, reject})); }
 });
@@ -59,11 +61,12 @@ function runTimer() {
 	timers.delete(id);
 	return fn();
 }
-function respond(request, text, ok = true) { request.resolve({ok, async text() { return text; }}); }
+function respond(request, text, ok = true) { request.resolve({ok, async text() { return text; }, async json() { return {html: text}; }}); }
 
 type('v'); type('vol');
 assert.equal(requests.length, 0, 'Typing is debounced');
 assert.equal(timers.size, 1, 'Rapid typing coalesces into one request');
+assert.equal(lastDelay, 80, 'New searches use the shorter typing delay');
 const first = runTimer();
 assert.equal(requests[0].url.searchParams.get('search'), 'vol');
 assert.equal(requests[0].url.searchParams.has('page'), false, 'Search resets pagination');
@@ -98,6 +101,7 @@ const clear = runTimer(); respond(requests[4], 'all results'); await clear;
 assert.equal(requests[4].url.searchParams.get('search'), '', 'Clearing query restores all results');
 
 let prevented = false;
+form.values.search = 'enter typed';
 listeners.get('submit')({target: form, preventDefault() { prevented = true; }});
 assert.equal(prevented, true, 'Enter searches without navigation');
 const enter = runTimer(); respond(requests[5], 'submitted'); await enter;
@@ -128,14 +132,27 @@ assert.equal(requests[10].url.searchParams.get('search'), '', 'Clear updates res
 input.value = 'latency';
 listeners.get('keydown')({key: 'Escape', target: input, preventDefault() {}});
 assert.equal(input.value, '', 'Escape clears the active query');
-const escaped = runTimer(); respond(requests[11], 'all resources'); await escaped;
+assert.equal(timers.size, 0, 'Repeating a recent query applies results immediately');
+assert.equal(requests.length, 11, 'Repeating a recent query does not issue an HTTP request');
 listeners.get('keydown')({key: 'Escape', target: input, preventDefault() { assert.fail('Empty Escape should do nothing'); }});
 assert.equal(timers.size, 0, 'Empty Escape does not request data');
 input.value = 'composing';
 listeners.get('keydown')({key: 'Escape', isComposing: true, target: input});
 assert.equal(input.value, 'composing', 'Escape preserves IME composition');
 window.location.href += '#old-resource';
-type('count'); const counted = runTimer(); respond(requests[12], 'counted results'); await counted;
+type('count'); const counted = runTimer(); respond(requests[11], 'counted results'); await counted;
 assert.equal(status.textContent, '2 of 4 resources match', 'Matching resource count is announced');
-assert.equal(requests[12].url.hash, '', 'New search clears an obsolete resource anchor');
+assert.equal(requests[11].url.hash, '', 'New search clears an obsolete resource anchor');
+assert.equal(requests[11].url.searchParams.get('action'), 'netapp.monitoring.search', 'Detail search uses lightweight fragment endpoint');
+assert.equal(new URL(window.location.href).searchParams.get('action'), 'netapp.monitoring.view', 'Address bar keeps a normal reloadable page URL');
+type('pending query'); const pending = runTimer();
+type('count');
+assert.equal(timers.size, 0, 'Cached results display immediately while an older request is running');
+assert.equal(requests[12].options.signal.aborted, true, 'Cache hit aborts the older request');
+respond(requests[12], 'obsolete response'); await pending;
+assert.equal(results.text, 'counted results', 'An old response cannot overwrite an immediately cached result');
+now += 5001;
+type('count');
+const expired = runTimer(); respond(requests[13], 'fresh counted results'); await expired;
+assert.equal(results.text, 'fresh counted results', 'Expired browser cache triggers a new request');
 console.log('Live search checks passed: debounce, pagination, focus preservation, request races, failure, IME, clear, Enter.');

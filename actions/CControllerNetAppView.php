@@ -9,6 +9,7 @@ use CRoleHelper;
 use CWebUser;
 use Modules\NetAppMonitoring\Includes\NetAppCollector;
 use Modules\NetAppMonitoring\Includes\NetAppProblems;
+use Modules\NetAppMonitoring\Includes\NetAppSearchSnapshot;
 
 class CControllerNetAppView extends CController {
 
@@ -43,11 +44,16 @@ class CControllerNetAppView extends CController {
 	}
 
 	protected function doAction(): void {
+		$this->respond(false);
+	}
+
+	protected function respond(bool $fragment): void {
 		$tab = $this->getInput('tab', 'overview');
 		$search = trim($this->getInput('search', ''));
 		$per_page = max(1, (int) (CWebUser::$data['rows_per_page'] ?? 50));
-		$snapshot = NetAppCollector::collect((string) $this->host['hostid']);
+		$snapshot = NetAppSearchSnapshot::load((string) $this->host['hostid'], $fragment);
 		$response = new CControllerResponseData([
+			'_fragment' => $fragment,
 			'host' => $this->host,
 			'snapshot' => $snapshot,
 			'problem_widget' => $tab === 'problems' && ($snapshot['problems_available'] ?? true)

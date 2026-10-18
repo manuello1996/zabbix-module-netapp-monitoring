@@ -172,8 +172,13 @@ class NetAppRenderer {
 	/** Use Zabbix's permission-aware item menu for every latest value. */
 	public static function itemMenu($label, array $item): \CLinkAction {
 		$backurl = (new \CUrl('zabbix.php'))->formatGetArguments()->getUrl();
+		$backurl = (new \CUrl($backurl));
+		parse_str(parse_url($backurl->getUrl(), PHP_URL_QUERY) ?? '', $arguments);
+		if (($arguments['action'] ?? '') === 'netapp.monitoring.search') {
+			$backurl->setArgument('action', 'netapp.monitoring.view');
+		}
 		return (new \CLinkAction($label))->setMenuPopup(\CMenuPopupHelper::getItem([
-			'itemid' => $item['itemid'], 'context' => 'host', 'backurl' => $backurl
+			'itemid' => $item['itemid'], 'context' => 'host', 'backurl' => $backurl->getUrl()
 		]))->setTitle(_('Item actions'))->addClass('netapp-monitoring-inline-value');
 	}
 

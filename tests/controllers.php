@@ -45,6 +45,7 @@ namespace Modules\NetAppMonitoring\Includes {
 namespace {
 	use Modules\NetAppMonitoring\Actions\CControllerNetAppList;
 	use Modules\NetAppMonitoring\Actions\CControllerNetAppView;
+	use Modules\NetAppMonitoring\Actions\CControllerNetAppSearch;
 	use Modules\NetAppMonitoring\Includes\NetAppCollector;
 
 	// Validation itself belongs to Zabbix. The harness records the actual declarations
@@ -104,8 +105,10 @@ namespace {
 	}
 	if (!function_exists('_')) { function _($text) { return $text; } }
 	require __DIR__.'/../includes/NetAppLocationGroups.php';
+	require __DIR__.'/../includes/NetAppSearchSnapshot.php';
 	require __DIR__.'/../actions/CControllerNetAppList.php';
 	require __DIR__.'/../actions/CControllerNetAppView.php';
+	require __DIR__.'/../actions/CControllerNetAppSearch.php';
 
 	$count = 0;
 	function expect($actual, $expected, string $label): void {
@@ -198,6 +201,10 @@ namespace {
 		'sortorder' => 'DESC', 'page' => 3, 'focus' => 'netapp-resource-test'
 	]))->run()->data;
 	expect($data['focus'], 'netapp-resource-test', 'Resource focus reaches permission-scoped view');
+	$fragment = (new CControllerNetAppSearch(['hostid' => '20', 'tab' => 'volumes', 'search' => 'latency']))->run()->data;
+	expect([$fragment['_fragment'], $fragment['tab'], $fragment['search']], [true, 'volumes', 'latency'],
+		'Lightweight search uses the same validated detail inputs');
+	denied(new CControllerNetAppSearch(['hostid' => '999']));
 	expect([$data['tab'], $data['search'], $data['sort'], $data['sortorder'], $data['page']],
 		['volumes', 'vol', 'used', 'DESC', 3], 'Validated detail preferences passed to view');
 

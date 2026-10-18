@@ -70,4 +70,9 @@ else {
 	$content->addItem(R::inventory($data, $groups[$data['tab']] ?? [$data['tab']]));
 }
 $page->addItem($content);
-$page->show();
+if (!empty($data['_fragment'])) {
+	echo json_encode(['html' => (string) $summary.(string) $content], JSON_THROW_ON_ERROR);
+}
+else {
+	$page->show();
+}

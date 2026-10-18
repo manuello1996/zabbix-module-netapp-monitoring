@@ -91,6 +91,13 @@ highlights it for five seconds. SVM search also matches those related resource n
 Tab searches include a live Clear button and an Escape shortcut. Inventory searches match
 resource names, ownership, metric names/keys and latest values, report matching resource counts,
 and open metrics panels when a match would otherwise be hidden. Matching names are highlighted.
+Detail searches use a small JSON response containing the native results and host-status HTML,
+with an 80 ms typing delay. A private temporary cache reuses the signed-in user's collected
+snapshot for up to 10 seconds; current host access is checked on every request. Browser memory
+keeps up to eight recent query results for five seconds, allowing repeated queries and Clear
+to respond immediately. A normal page load or Refresh always collects current monitoring data.
+The server cache is optional: unavailable private temporary storage or oversized snapshots fall
+back to normal collection. Snapshots are never stored in Zabbix session cookies.
 Volume available space is the value reported by the template, rather than an assumed size-minus-used
 value. Performance metrics are already calculated by the template; the frontend does not derive
 rates from cumulative counters. Calculated latency values in the supplied template are already

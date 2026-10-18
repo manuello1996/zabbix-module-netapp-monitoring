@@ -448,6 +448,22 @@ $performance_empty = render('netapp.monitoring.view', array_replace($base,
 check(strpos($performance_empty, 'No metrics match your search.') !== false,
 	'Performance search explains empty results');
 
+$fragment_html = render('netapp.monitoring.view', array_replace($base,
+	['tab' => 'volumes', 'search' => 'latency', '_fragment' => true]));
+$fragment = json_decode($fragment_html, true, 512, JSON_THROW_ON_ERROR);
+check(strpos($fragment['html'], 'id="netapp-search-results"') !== false
+	&& strpos($fragment['html'], 'id="netapp-host-summary"') !== false,
+	'Lightweight response contains a coherent result and host-status snapshot');
+check(strpos($fragment['html'], '<main>') === false
+	&& strpos($fragment['html'], 'class="table-paging"') !== false,
+	'Lightweight response omits the full page while retaining native pagination');
+$original_get = $_GET;
+$_GET = ['action' => 'netapp.monitoring.search', 'hostid' => '20', 'tab' => 'volumes', 'search' => 'latency'];
+$menu = (string) Modules\NetAppMonitoring\Includes\NetAppRenderer::itemMenu('Value', item('Metric', '1'));
+check(strpos($menu, 'netapp.monitoring.search') === false && strpos($menu, 'netapp.monitoring.view') !== false,
+	'Item menus always return to a normal page instead of the JSON endpoint');
+$_GET = $original_get;
+
 if (isset($argv[2])) {
 	if (!is_dir($argv[2])) { mkdir($argv[2], 0777, true); }
 	foreach ($outputs as $name => $html) {

@@ -13,6 +13,11 @@
       "view": "netapp.monitoring.list",
       "layout": "layout.htmlpage"
     },
+    "netapp.monitoring.search": {
+      "class": "CControllerNetAppSearch",
+      "view": "netapp.monitoring.view",
+      "layout": "layout.json"
+    },
     "netapp.monitoring.view": {
       "class": "CControllerNetAppView",
       "view": "netapp.monitoring.view",
