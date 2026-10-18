@@ -57,10 +57,8 @@ if ($data['tab'] === 'overview') {
 	$content->addItem(R::overview($data));
 }
 elseif ($data['tab'] === 'performance') {
-	$content->addItem((new CDiv(_('IOPS measures operations per second. Throughput measures bytes transferred per second. Latency is the average time per operation in milliseconds; lower values mean faster responses. Read, write, and other describe operation types; total combines them. Compare history and workload before interpreting a change.')))->addClass('netapp-monitoring-note'));
 	$metrics = array_filter($snapshot['cluster'], static function ($key) { return strpos($key, 'statistics.') === 0; }, ARRAY_FILTER_USE_KEY);
 	$content->addItem(R::section(_('Cluster performance'), R::metricTable($metrics, $data['search'])));
-	$content->addItem((new CDiv(_('Rates are the values calculated by the template. Raw counters are cumulative. Open a metric history to inspect changes over time; volume counters are available under Volumes → Metrics.')))->addClass('netapp-monitoring-note'));
 }
 elseif ($data['tab'] === 'problems') {
 	$content->addItem(R::problems($data));

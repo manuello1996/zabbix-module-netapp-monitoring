@@ -515,8 +515,6 @@ class NetAppRenderer {
 				new \CLink(_('View'), self::url(['hostid' => $data['host']['hostid'], 'tab' => $tab]))]);
 		}
 		$content[] = self::section(_('Discovered environment'), $table);
-		$content[] = (new \CDiv(_('Counts describe discovered resources. Missing values mean no retained sample is available. Capacity is shown per volume and per LUN; these layers overlap and are not added together.')))
-			->addClass('netapp-monitoring-note');
 		return new \CDiv($content);
 	}
 
