@@ -19,5 +19,5 @@
       "layout": "layout.htmlpage"
     }
   },
-  "assets": {"css": ["blue-theme.css", "dark-theme.css"], "js": ["search.js", "metrics.js", "menus.js", "locations.js", "problems.js"]}
+  "assets": {"css": ["blue-theme.css", "dark-theme.css"], "js": ["search.js", "metrics.js", "menus.js", "locations.js", "problems.js", "resources.js"]}
 }

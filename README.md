@@ -85,6 +85,12 @@ node using the existing template values and item keys. Missing ownership appears
 Unavailable; retained SVM ownership is marked Stale when collection fails. Groups remain
 together when sorting, and repeat their heading when continued on another page. Resource
 counts reflect the current search across all pages; group headings do not consume page rows.
+SVM rows list their related volume and LUN names. Each name opens the appropriate inventory
+tab on the resource's page, clears the destination search, scrolls to the selected row and
+highlights it for five seconds. SVM search also matches those related resource names.
+Tab searches include a live Clear button and an Escape shortcut. Inventory searches match
+resource names, ownership, metric names/keys and latest values, report matching resource counts,
+and open metrics panels when a match would otherwise be hidden. Matching names are highlighted.
 Volume available space is the value reported by the template, rather than an assumed size-minus-used
 value. Performance metrics are already calculated by the template; the frontend does not derive
 rates from cumulative counters. Calculated latency values in the supplied template are already

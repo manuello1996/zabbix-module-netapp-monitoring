@@ -181,8 +181,9 @@ class NetAppRenderer {
 		return $item ? self::itemMenu(self::value($item, $state), $item) : self::value(null);
 	}
 
-	public static function metricTable(array $metrics, string $search = '', string $object = ''): \CTableInfo {
-		$table = (new \CTableInfo())->setHeader([_('Metric'), _('Latest value'), _('Last update'), _('History')]);
+	public static function metricTable(array $metrics, string $search = '', string $object = '', string $highlight = ''): \CTableInfo {
+		$table = (new \CTableInfo())->setHeader([_('Metric'), _('Latest value'), _('Last update'), _('History')])
+			->setNoDataMessage($search !== '' ? _('No metrics match your search.') : _('No metrics are available.'));
 		foreach ($metrics as $key => $item) {
 			if (!$item) {
 				continue;
@@ -190,13 +191,13 @@ class NetAppRenderer {
 			if ($search !== '' && stripos($item['name'].' '.$key.' '.NetAppFormatter::itemValue($item), $search) === false) {
 				continue;
 			}
-			$table->addRow([self::metricName($item['name'], $object), self::inlineValue($item, strpos($key, 'state') !== false || $key === 'status' || $key === 'controller.over_temperature'),
+			$table->addRow([self::highlight(self::metricName($item['name'], $object), $highlight !== '' ? $highlight : $search), self::inlineValue($item, strpos($key, 'state') !== false || $key === 'status' || $key === 'controller.over_temperature'),
 				self::clock($item['lastclock']), new \CLink(_('History'), self::historyUrl($item))]);
 		}
 		return $table;
 	}
 
-	public static function metricGroups(array $metrics, string $object = ''): \CDiv {
+	public static function metricGroups(array $metrics, string $object = '', string $highlight = ''): \CDiv {
 		$groups = [];
 		foreach ($metrics as $key => $item) {
 			if (strpos($key, '_raw.') !== false) {
@@ -221,7 +222,7 @@ class NetAppRenderer {
 		}
 		$panels = [];
 		foreach ($groups as $label => $items) {
-			$panels[] = (new \CDiv([new \CTag('h5', true, $label), self::metricTable($items, '', $object)]))
+			$panels[] = (new \CDiv([new \CTag('h5', true, $label), self::metricTable($items, '', $object, $highlight)]))
 				->addClass('netapp-monitoring-metric-group');
 		}
 		return (new \CDiv($panels))->addClass('netapp-monitoring-metric-grid');
@@ -242,6 +243,11 @@ class NetAppRenderer {
 	}
 
 	public static function filter(array $data, bool $list = false): \CForm {
+		$hint = _('Names, parents, properties and metrics');
+		if (($data['tab'] ?? '') === 'svms') { $hint = _('SVM names, properties, volumes and LUNs'); }
+		elseif (($data['tab'] ?? '') === 'problems') { $hint = _('Problem names'); }
+		elseif (($data['tab'] ?? '') === 'performance') { $hint = _('Metric names and latest values'); }
+		elseif ($list) { $hint = _('Host names'); }
 		$form = (new \CForm('get'))->cleanItems()->setAttribute('data-netapp-search', '1')
 			->addVar('action', $list ? 'netapp.monitoring.list' : 'netapp.monitoring.view');
 		if (!$list) {
@@ -250,17 +256,30 @@ class NetAppRenderer {
 		$form->addVar('sort', $data['sort'] ?? 'name')->addVar('sortorder', $data['sortorder'] ?? 'ASC');
 		$form->addItem((new \CDiv([
 			new \CLabel($list ? _('Search hosts') : _('Search this tab'), 'netapp-search'),
-			(new \CTextBox('search', $data['search'] ?? ''))->setId('netapp-search')->addClass('netapp-monitoring-search'),
-			new \CLink(_('Reset'), $list ? (new \CUrl('zabbix.php'))->setArgument('action', 'netapp.monitoring.list')
-				: self::url(['hostid' => $data['host']['hostid'], 'tab' => $data['tab']])),
-			(new \CSpan())->setAttribute('data-netapp-search-status', '1')->setAttribute('role', 'status')
+			(new \CTextBox('search', $data['search'] ?? ''))->setId('netapp-search')->addClass('netapp-monitoring-search')
+				->setAttribute('placeholder', $hint)->setAttribute('aria-describedby', 'netapp-search-hint'),
+			(new \CTag('button', true, _('Clear')))->setAttribute('type', 'button')
+				->setAttribute('data-netapp-search-clear', '1')->setAttribute('title', _('Clear search (Escape)'))
+				->setAttribute('aria-controls', 'netapp-search')->addClass(ZBX_STYLE_BTN_ALT),
+			(new \CSpan($hint))->setId('netapp-search-hint')->addClass('netapp-monitoring-search-hint'),
+			(new \CSpan($data['_search_message'] ?? ''))->setAttribute('data-netapp-search-status', '1')->setAttribute('role', 'status')
 				->setAttribute('data-searching', _('Searching…'))
-				->setAttribute('data-error', _('Search could not be updated. Please try again or reload the page.'))
+				->setAttribute('data-error', _('Search could not be updated. Results still show the previous search. Please try again.'))
 		]))->addClass('netapp-monitoring-filterbar'));
 		return $form;
 	}
 
 	public static function inventory(array $data, array $groups): \CDiv {
+		$related = [];
+		if (in_array('svms', $groups, true)) {
+			foreach (['volumes', 'luns'] as $type) {
+				foreach ($data['snapshot']['entities'][$type] ?? [] as $resource) {
+					if (($resource['parent'] ?? '') !== '') {
+						$related[$resource['parent']][$type][] = $resource;
+					}
+				}
+			}
+		}
 		$rows = [];
 		foreach ($groups as $group) {
 			foreach ($data['snapshot']['entities'][$group] ?? [] as $row) {
@@ -272,10 +291,15 @@ class NetAppRenderer {
 		}
 		$search = trim($data['search'] ?? '');
 		if ($search !== '') {
-			$rows = array_values(array_filter($rows, static function ($row) use ($search) {
+			$rows = array_values(array_filter($rows, static function ($row) use ($search, $related) {
 				$text = $row['name'].' '.$row['parent'];
-				foreach ($row['metrics'] as $item) {
-					$text .= ' '.NetAppFormatter::itemValue($item);
+				if ($row['_group'] === 'svms') {
+					foreach ($related[$row['name']] ?? [] as $resources) {
+						$text .= ' '.implode(' ', array_column($resources, 'name'));
+					}
+				}
+				foreach ($row['metrics'] as $key => $item) {
+					$text .= ' '.$key.' '.$item['name'].' '.NetAppFormatter::itemValue($item);
 				}
 				return stripos($text, $search) !== false;
 			}));
@@ -314,6 +338,15 @@ class NetAppRenderer {
 		}
 		$per_page = max(1, (int) ($data['per_page'] ?? 50));
 		$page = min(max(1, (int) $data['page']), max(1, (int) ceil($total / $per_page)));
+		$focus = $data['focus'] ?? '';
+		if ($focus !== '') {
+			foreach ($rows as $index => $row) {
+				if ($focus === self::resourceAnchor($data['host']['hostid'], $row['_group'], $row['id'])) {
+					$page = intdiv($index, $per_page) + 1;
+					break;
+				}
+			}
+		}
 		$args = ['hostid' => $data['host']['hostid'], 'tab' => $data['tab'], 'search' => $search,
 			'sort' => $sort, 'sortorder' => $order];
 		$header = static function ($label, $field) use ($args, $sort, $order) {
@@ -349,7 +382,7 @@ class NetAppRenderer {
 				'type', 'svm_name', 'status.container_state', 'space_available'];
 			foreach ($property_keys as $key) {
 				if (isset($m[$key])) {
-					$properties[] = new \CDiv([self::metricName($m[$key]['name'], $row['name']).': ', self::inlineValue($m[$key],
+					$properties[] = new \CDiv([self::highlight(self::metricName($m[$key]['name'], $row['name']), $search), ': ', self::inlineValue($m[$key],
 						in_array($key, ['controller.over_temperature', 'status.container_state'], true))]);
 				}
 			}
@@ -358,34 +391,99 @@ class NetAppRenderer {
 				$shown_keys = array_merge($shown_keys, ['space_size', 'space_used', 'space.size', 'space.used']);
 			}
 			$expandable = (bool) array_diff(array_keys($m), $shown_keys);
+			$expanded = false;
+			if ($search !== '' && $expandable) {
+				foreach (array_diff_key($m, array_flip($shown_keys)) as $key => $item) {
+					if (stripos($key.' '.$item['name'].' '.NetAppFormatter::itemValue($item), $search) !== false) {
+						$expanded = true;
+						break;
+					}
+				}
+			}
 			$clocks = array_column($m, 'lastclock');
 			$panel_id = 'netapp-metrics-'.sha1($data['host']['hostid'].'/'.$row['_group'].'/'.$row['id']);
 			$toggle = $expandable ? (new \CTag('button', true, _('Metrics').' ('.count($m).')'))
 				->setAttribute('type', 'button')->setId($panel_id.'-toggle')
 				->setAttribute('data-netapp-metrics-toggle', '1')
-				->setAttribute('aria-expanded', 'false')->setAttribute('aria-controls', $panel_id)
+				->setAttribute('aria-expanded', $expanded ? 'true' : 'false')->setAttribute('aria-controls', $panel_id)
 				->setAttribute('aria-label', _('Metrics').': '.$row['name'])
 				->addClass('netapp-monitoring-metrics-toggle') : null;
 			$parent = trim((string) ($row['parent'] ?? ''));
-			$table->addRow([(new \CDiv([new \CSpan($row['name']), $toggle]))
-				->addClass('netapp-monitoring-resource-name'),
-				(new \CSpan(($parent !== '' ? $parent.' / ' : '').str_replace('_', ' ', $row['_group'])))
+			$name = [(new \CDiv([self::highlight($row['name'], $search), $toggle]))->addClass('netapp-monitoring-resource-name')];
+			if ($row['_group'] === 'svms') {
+				$sections = [];
+				foreach (['volumes' => _('Volumes'), 'luns' => _('LUNs')] as $type => $label) {
+					$resources = $related[$row['name']][$type] ?? [];
+					if (!$resources) { continue; }
+					usort($resources, static function ($a, $b) { return strnatcasecmp($a['name'], $b['name']); });
+					$heading = (new \CDiv([new \CSpan($label),
+						(new \CSpan((string) count($resources)))->addClass('netapp-monitoring-related-count')]))
+						->addClass('netapp-monitoring-related-label');
+					$links = [];
+					foreach ($resources as $resource) {
+						$anchor = self::resourceAnchor($data['host']['hostid'], $type, $resource['id']);
+						$url = self::url(['hostid' => $data['host']['hostid'], 'tab' => $type, 'focus' => $anchor]);
+						$url->setArgument('search', '');
+						$links[] = (new \CLink(self::highlight($resource['name'], $search), $url->getUrl().'#'.$anchor))
+							->addClass('netapp-monitoring-related-link');
+					}
+					$sections[] = (new \CDiv([$heading,
+						(new \CDiv($links))->addClass('netapp-monitoring-related-links')]))
+						->addClass('netapp-monitoring-related-resources');
+				}
+				if ($sections) { $name[] = (new \CDiv($sections))->addClass('netapp-monitoring-svm-resources'); }
+			}
+			$anchor = self::resourceAnchor($data['host']['hostid'], $row['_group'], $row['id']);
+			$name_cell = new \CCol(new \CDiv($name));
+			if ($row['_group'] === 'svms') { $name_cell->addClass('netapp-monitoring-svm-name-cell'); }
+			$resource_row = (new \CRow([$name_cell,
+				self::highlight(($parent !== '' ? $parent.' / ' : '').str_replace('_', ' ', $row['_group']), $search)
 					->addClass(ZBX_STYLE_NOWRAP),
 				self::inlineValue($m['state'] ?? $m['status.state'] ?? null, true),
 				$capacity ? new \CDiv([self::capacity($row['capacity'], $m['space_size'] ?? $m['space.size'] ?? null,
 					$m['space_used'] ?? $m['space.used'] ?? null), $properties]) : ($properties ?: '-'),
-				self::clock($clocks ? max($clocks) : 0)]);
+				self::clock($clocks ? max($clocks) : 0)]))->setId($anchor)
+				->setAttribute('data-netapp-resource-focus', $focus === $anchor ? '1' : '0');
+			if ($expanded) { $resource_row->addClass('netapp-monitoring-resource-expanded'); }
+			$table->addRow($resource_row);
 			if (!$expandable) {
 				continue;
 			}
-			$panel = (new \CDiv(self::metricGroups($m, $row['name'])))->setAttribute('role', 'region')
+			$panel = (new \CDiv(self::metricGroups($m, $row['name'], $search)))->setAttribute('role', 'region')
 				->setAttribute('aria-labelledby', $panel_id.'-toggle');
-			$table->addRow((new \CRow([(new \CCol($panel))->setColSpan(5)]))
-				->setId($panel_id)->setAttribute('hidden', 'hidden')->addClass('netapp-monitoring-metrics-row'));
+			$panel_row = (new \CRow([(new \CCol($panel))->setColSpan(5)]))
+				->setId($panel_id)->addClass('netapp-monitoring-metrics-row');
+			if (!$expanded) { $panel_row->setAttribute('hidden', 'hidden'); }
+			$table->addRow($panel_row);
 		}
 		$table->setPageNavigation(NetAppPager::forTotal($page, $total, $per_page, self::url($args)));
-		return new \CDiv([self::filter($data),
-			(new \CDiv((new \CDiv($table))->addClass('netapp-monitoring-table-wrap')))->setId('netapp-search-results')]);
+		$message = $search !== '' ? sprintf(_('%1$s of %2$s resources match'), $total,
+			array_sum(array_map(static function ($group) use ($data) {
+				return count($data['snapshot']['entities'][$group] ?? []);
+			}, $groups))) : '';
+		return new \CDiv([self::filter(array_replace($data, ['_search_message' => $message])),
+			(new \CDiv((new \CDiv($table))->addClass('netapp-monitoring-table-wrap')))->setId('netapp-search-results')
+				->setAttribute('data-netapp-search-message', $message)]);
+	}
+
+	/** Highlight text through escaped UI elements, including untrusted resource names. */
+	public static function highlight(string $text, string $search): \CSpan {
+		$parts = [];
+		$offset = 0;
+		if ($search !== '') {
+			while (($position = stripos($text, $search, $offset)) !== false) {
+				$parts[] = substr($text, $offset, $position - $offset);
+				$parts[] = (new \CTag('mark', true, substr($text, $position, strlen($search))))
+					->addClass('netapp-monitoring-search-match');
+				$offset = $position + strlen($search);
+			}
+		}
+		$parts[] = substr($text, $offset);
+		return new \CSpan($parts);
+	}
+
+	public static function resourceAnchor(string $hostid, string $group, string $id): string {
+		return 'netapp-resource-'.sha1($hostid.'/'.$group.'/'.$id);
 	}
 
 	public static function overview(array $data): \CDiv {

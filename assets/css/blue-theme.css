@@ -124,6 +124,61 @@
 	margin-bottom: 0;
 }
 
+.netapp-monitoring-svm-name-cell { width: 42%; min-width: 280px; }
+.netapp-monitoring-svm-name-cell .netapp-monitoring-resource-name > span { font-weight: 600; }
+.netapp-monitoring-svm-resources {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+	gap: 12px 20px;
+	margin-top: 12px;
+	max-width: 760px;
+}
+.netapp-monitoring-related-resources {
+	min-width: 0;
+	padding-left: 10px;
+	border-left: 2px solid var(--netapp-monitoring-border);
+}
+.netapp-monitoring-related-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--netapp-monitoring-muted);
+	font-size: 11px;
+	margin-bottom: 6px;
+}
+.netapp-monitoring-related-count { font-variant-numeric: tabular-nums; }
+.netapp-monitoring-related-count::before { content: '('; }
+.netapp-monitoring-related-count::after { content: ')'; }
+.netapp-monitoring-related-links { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 5px; }
+.netapp-monitoring-related-link {
+	display: inline-block;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 3px 7px;
+	border: 1px solid var(--netapp-monitoring-border);
+	border-radius: 3px;
+	background: var(--netapp-monitoring-surface);
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.netapp-monitoring-related-link:hover { border-color: var(--netapp-location-accent); }
+.netapp-monitoring-related-link:focus-visible { outline: 2px solid var(--netapp-location-accent); outline-offset: 2px; }
+.netapp-monitoring-search-hint { color: var(--netapp-monitoring-muted); font-size: 11px; }
+.netapp-monitoring-search-match { color: inherit; background: rgba(220, 165, 35, .3); padding: 0 1px; border-radius: 2px; }
+.netapp-monitoring-resource-highlight > td {
+	animation: netapp-resource-highlight 5s ease-out;
+	box-shadow: inset 0 2px var(--netapp-location-accent), inset 0 -2px var(--netapp-location-accent);
+}
+@keyframes netapp-resource-highlight {
+	0%, 65% { background-color: rgba(40, 140, 200, .24); }
+	100% { background-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.netapp-monitoring-resource-highlight > td { animation: none; background-color: rgba(40, 140, 200, .24); }
+}
+
 .netapp-monitoring-location-count {
 	font-size: 11px;
 	color: var(--netapp-location-muted);

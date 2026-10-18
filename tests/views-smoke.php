@@ -180,7 +180,7 @@ check($xpath->query('.//td', $row)->length === 5, 'Metrics control belongs to th
 check($xpath->query('./td[2]/span', $row)->item(0)->textContent === 'svm-test / volumes',
 	'Parent and type share one inline element');
 check($xpath->query('./td[2]//div', $row)->length === 0, 'Parent/type has no stacked block elements');
-check($xpath->query('.//td[text()="Volume latency, read"]', $panel)->length === 1,
+check($xpath->query('.//td[.="Volume latency, read"]', $panel)->length === 1,
 	'Expanded metric label omits the exact object prefix');
 check(Modules\NetAppMonitoring\Includes\NetAppRenderer::metricName('a:b: State', 'a:b') === 'State',
 	'Object names containing colons are stripped exactly');
@@ -367,6 +367,86 @@ foreach (['luns' => 'svm', 'ethernet' => 'node', 'fc' => 'node', 'hardware' => '
 	$html = render('netapp.monitoring.view', array_replace($base, ['tab' => $tab, 'per_page' => 50]));
 	check(strpos($html, 'data-netapp-inventory-group="'.$kind.'"') !== false, "$tab groups by supplied ownership");
 }
+
+$svm_inventory = $inventory;
+$svm_inventory['tab'] = 'svms';
+$svm_inventory['search'] = '';
+$svm_inventory['page'] = 1;
+$svm_inventory['per_page'] = 50;
+$svm_inventory['snapshot']['entities']['svms'] = [array_replace($resource,
+	['id' => 'svm-a', 'name' => 'svm-a', 'parent' => '']), array_replace($resource,
+	['id' => 'svm-b', 'name' => 'svm-b', 'parent' => ''])];
+$svm_inventory['snapshot']['entities']['luns'] = [array_replace($resource,
+	['id' => 'lun-a', 'name' => '/vol/shared/lun', 'parent' => 'svm-a']), array_replace($resource,
+	['id' => 'lun-b', 'name' => '/vol/shared/lun', 'parent' => 'svm-b'])];
+$html = render('netapp.monitoring.view', $svm_inventory);
+$dom = new DOMDocument();
+$xml_errors = libxml_use_internal_errors(true);
+$dom->loadHTML($html);
+libxml_clear_errors();
+libxml_use_internal_errors($xml_errors);
+$xpath = new DOMXPath($dom);
+$svm_rows = $xpath->query('//tr[td/div/div/span[text()="svm-a"]]');
+check($svm_rows->length === 1, 'SVM resource row can be identified independently of child links');
+$links = $xpath->query('.//div[contains(@class,"netapp-monitoring-related-resources")]//a', $svm_rows->item(0));
+check($links->length === 3, 'SVM lists only its two volumes and one LUN');
+$targets = [];
+foreach ($links as $link) {
+	parse_str(parse_url($link->getAttribute('href'), PHP_URL_QUERY), $params);
+	check($params['hostid'] === '20' && $params['search'] === ''
+		&& in_array($params['tab'], ['volumes', 'luns'], true), 'Related links keep host scope and clear destination search');
+	check(parse_url($link->getAttribute('href'), PHP_URL_FRAGMENT) === $params['focus'], 'Related link anchor matches resource focus');
+	$targets[$params['tab']] = $params['focus'];
+}
+$svm_inventory['search'] = 'z-volume';
+$html = render('netapp.monitoring.view', $svm_inventory);
+check(strpos($html, '>svm-a<') !== false && strpos($html, '>svm-b<') === false,
+	'SVM search finds related volume names without showing unrelated SVMs');
+$target_data = $svm_inventory;
+$target_data['search'] = '';
+$target_data['tab'] = 'luns';
+$target_data['per_page'] = 1;
+$target_data['focus'] = Modules\NetAppMonitoring\Includes\NetAppRenderer::resourceAnchor('20', 'luns', 'lun-b');
+$html = render('netapp.monitoring.view', $target_data);
+check(strpos($html, 'Displaying 2 to 2 of 2 found') !== false
+	&& strpos($html, 'data-netapp-resource-focus="1"') !== false
+	&& strpos($html, 'SVM: svm-b') !== false, 'Duplicate LUN names resolve exact owner and correct user-sized page');
+$target_data['sortorder'] = 'DESC';
+$html = render('netapp.monitoring.view', $target_data);
+check(substr_count($html, 'data-netapp-resource-focus="1"') === 1, 'Exactly one resource is marked for highlighting');
+$target_data['focus'] = 'invalid-or-deleted-resource';
+$html = render('netapp.monitoring.view', $target_data);
+check(strpos($html, 'data-netapp-resource-focus="1"') === false
+	&& strpos($html, 'Displaying 1 to 1 of 2 found') !== false, 'Missing target falls back safely to normal pagination');
+
+$metric_search = array_replace($base, ['tab' => 'volumes', 'search' => 'LATENCY']);
+$html = render('netapp.monitoring.view', $metric_search);
+check(strpos($html, '1 of 1 resources match') !== false, 'Inventory search matches metric names case-insensitively');
+check(strpos($html, 'aria-expanded="true"') !== false
+	&& strpos($html, 'netapp-monitoring-resource-expanded') !== false,
+	'Matching hidden metrics open their panel automatically');
+check(strpos($html, '<mark class="netapp-monitoring-search-match">latency</mark>') !== false,
+	'Matching metric names are highlighted with original letter case');
+$metric_search['search'] = 'statistics.latency.read';
+$html = render('netapp.monitoring.view', $metric_search);
+check(strpos($html, '1 of 1 resources match') !== false && strpos($html, 'aria-expanded="true"') !== false,
+	'Metric key search also reveals the matching panel');
+$metric_search['search'] = 'no-such-resource-or-metric';
+$html = render('netapp.monitoring.view', $metric_search);
+check(strpos($html, '0 of 1 resources match') !== false, 'Empty search results report an explicit zero count');
+check(strpos($html, 'data-netapp-search-clear="1"') !== false
+	&& strpos($html, 'Clear search (Escape)') !== false, 'Empty results retain a clear-search control');
+$metric_search['search'] = 'online';
+$html = render('netapp.monitoring.view', $metric_search);
+check(strpos($html, '1 of 1 resources match') !== false && strpos($html, 'aria-expanded="true"') === false,
+	'A visible state match does not unnecessarily expand metrics');
+$highlight = (string) Modules\NetAppMonitoring\Includes\NetAppRenderer::highlight('<script>alert(1)</script>', '<script>');
+check(strpos($highlight, '<script>') === false && strpos($highlight, '&lt;script&gt;') !== false,
+	'Highlighting never turns untrusted resource names into HTML');
+$performance_empty = render('netapp.monitoring.view', array_replace($base,
+	['tab' => 'performance', 'search' => 'no-such-metric']));
+check(strpos($performance_empty, 'No metrics match your search.') !== false,
+	'Performance search explains empty results');
 
 if (isset($argv[2])) {
 	if (!is_dir($argv[2])) { mkdir($argv[2], 0777, true); }

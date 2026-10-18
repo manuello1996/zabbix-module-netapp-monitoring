@@ -183,6 +183,8 @@ namespace {
 	$controller = new CControllerNetAppView(['hostid' => '20']);
 	$data = $controller->run()->data;
 	expect($data['host']['hostid'], '20', 'Authorized host resolved');
+	expect($data['focus'], '', 'Default detail has no highlighted resource');
+	expect($controller->rules['focus'], 'string', 'Resource focus validates as string');
 	expect($data['snapshot']['hostid'], '20', 'Authorized host collected');
 	expect($data['tab'], 'overview', 'Default detail tab');
 	expect($data['sort'], 'name', 'Default detail sort');
@@ -193,8 +195,9 @@ namespace {
 	expect($controller->rules['sort'], 'in name,state,used', 'Detail sort allowlisted');
 	$data = (new CControllerNetAppView([
 		'hostid' => '20', 'tab' => 'volumes', 'search' => '  vol  ', 'sort' => 'used',
-		'sortorder' => 'DESC', 'page' => 3
+		'sortorder' => 'DESC', 'page' => 3, 'focus' => 'netapp-resource-test'
 	]))->run()->data;
+	expect($data['focus'], 'netapp-resource-test', 'Resource focus reaches permission-scoped view');
 	expect([$data['tab'], $data['search'], $data['sort'], $data['sortorder'], $data['page']],
 		['volumes', 'vol', 'used', 'DESC', 3], 'Validated detail preferences passed to view');
 

@@ -23,6 +23,7 @@ class CControllerNetAppView extends CController {
 			'hostid' => 'required|db hosts.hostid',
 			'tab' => 'in overview,nodes,svms,volumes,luns,ethernet,fc,hardware,performance,problems',
 			'search' => 'string',
+			'focus' => 'string',
 			'sort' => 'in name,state,used',
 			'sortorder' => 'in ASC,DESC',
 			'page' => 'ge 1'
@@ -53,6 +54,7 @@ class CControllerNetAppView extends CController {
 				? NetAppProblems::data((string) $this->host['hostid'], $search, $per_page, (int) $this->getInput('page', 1)) : null,
 			'tab' => $tab,
 			'search' => $search,
+			'focus' => $this->getInput('focus', ''),
 			'sort' => $this->getInput('sort', 'name'),
 			'sortorder' => $this->getInput('sortorder', 'ASC'),
 			'page' => (int) $this->getInput('page', 1),

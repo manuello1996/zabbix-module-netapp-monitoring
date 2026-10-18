@@ -17,13 +17,16 @@ const summaryResult = text => ({text, replaceWith(next) { summary = next; }});
 summary = summaryResult('healthy');
 const result = text => ({text, attributes: {},
 	setAttribute(name, value) { this.attributes[name] = value; },
+	getAttribute(name) { return this.attributes[name]; },
 	removeAttribute(name) { delete this.attributes[name]; },
 	replaceWith(next) { results = next; }
 });
 results = result('initial');
 const form = {values: {action: 'netapp.monitoring.view', hostid: '10715', tab: 'volumes', search: '', sort: 'name', sortorder: 'ASC'},
-	querySelector() { return status; }, matches() { return true; }, setAttribute(name, value) { this[name] = value; }};
-const input = {name: 'search', closest() { return form; }};
+	querySelector(selector) { return selector === '[name="search"]' ? input : status; }, matches() { return true; }, setAttribute(name, value) { this[name] = value; }};
+let focused = false;
+const input = {name: 'search', get value() { return form.values.search; }, set value(value) { form.values.search = value; },
+	focus() { focused = true; }, closest() { return form; }};
 const window = {location: {href: 'http://127.0.0.1/zabbix.php?action=netapp.monitoring.view&page=3'},
 	history: {replaceState(_state, _title, url) { window.location.href = url.toString(); }}};
 const document = {
@@ -35,7 +38,10 @@ vm.runInNewContext(source, {document, window, URL, URLSearchParams, AbortControl
 	FormData: class { constructor(form) { return Object.entries(form.values); } },
 	DOMParser: class { parseFromString(text) { return {getElementById(id) {
 		if (text === 'login') return null;
-		return id === 'netapp-host-summary' ? (text === 'missing summary' ? null : summaryResult('status: ' + text)) : result(text);
+		if (id === 'netapp-host-summary') return text === 'missing summary' ? null : summaryResult('status: ' + text);
+		const replacement = result(text);
+		if (text === 'counted results') replacement.attributes['data-netapp-search-message'] = '2 of 4 resources match';
+		return replacement;
 	}}; } },
 	setTimeout(fn) { const id = ++timerId; timers.set(id, fn); return id; },
 	clearTimeout(id) { timers.delete(id); },
@@ -113,4 +119,23 @@ const groupSearch = runTimer(); respond(requests[9], 'group filtered problems');
 assert.equal(requests[9].url.searchParams.get('filter_groupids[]'), '25', 'Group multiselect values included');
 assert.equal(requests[9].url.searchParams.get('tab'), 'problems', 'Group changes preserve active main tab');
 assert.equal(requests[9].url.searchParams.has('page'), false, 'Group change resets pagination');
+form.values = {action: 'netapp.monitoring.view', hostid: '10715', tab: 'volumes', search: 'latency'};
+listeners.get('click')({target: {closest() { return {closest() { return form; }}; }}, preventDefault() {}});
+assert.equal(input.value, '', 'Clear button empties the query');
+assert.equal(focused, true, 'Clear button returns focus to the input');
+const cleared = runTimer(); respond(requests[10], 'all resources'); await cleared;
+assert.equal(requests[10].url.searchParams.get('search'), '', 'Clear updates results without navigating');
+input.value = 'latency';
+listeners.get('keydown')({key: 'Escape', target: input, preventDefault() {}});
+assert.equal(input.value, '', 'Escape clears the active query');
+const escaped = runTimer(); respond(requests[11], 'all resources'); await escaped;
+listeners.get('keydown')({key: 'Escape', target: input, preventDefault() { assert.fail('Empty Escape should do nothing'); }});
+assert.equal(timers.size, 0, 'Empty Escape does not request data');
+input.value = 'composing';
+listeners.get('keydown')({key: 'Escape', isComposing: true, target: input});
+assert.equal(input.value, 'composing', 'Escape preserves IME composition');
+window.location.href += '#old-resource';
+type('count'); const counted = runTimer(); respond(requests[12], 'counted results'); await counted;
+assert.equal(status.textContent, '2 of 4 resources match', 'Matching resource count is announced');
+assert.equal(requests[12].url.hash, '', 'New search clears an obsolete resource anchor');
 console.log('Live search checks passed: debounce, pagination, focus preservation, request races, failure, IME, clear, Enter.');

@@ -3,6 +3,13 @@
 	let timer;
 	let controller;
 	let generation = 0;
+	const clearSearch = form => {
+		const input = form.querySelector('[name="search"]');
+		if (!input) return;
+		input.value = '';
+		input.focus();
+		schedule(form, true);
+	};
 	const prepareFilter = () => {
 		const form = document.querySelector('[data-netapp-main-filter] form');
 		if (!form) return;
@@ -26,6 +33,7 @@
 			const url = new URL(window.location.href);
 			url.search = new URLSearchParams(new FormData(form)).toString();
 			url.searchParams.delete('page');
+			url.hash = '';
 			try {
 				const response = await fetch(url, {signal: controller.signal, credentials: 'same-origin'});
 				if (!response.ok) throw new Error('Search request failed');
@@ -41,7 +49,7 @@
 				if (summary) summary.replaceWith(updatedSummary);
 				window.history.replaceState(null, '', url);
 				document.querySelector('[data-netapp-refresh]')?.setAttribute('data-url', url.toString());
-				if (status) status.textContent = '';
+				if (status) status.textContent = replacement.getAttribute('data-netapp-search-message') || '';
 			}
 			catch (error) {
 				if (current !== generation || error.name === 'AbortError') return;
@@ -54,6 +62,20 @@
 		if (event.target.name !== 'search' || event.isComposing) return;
 		const form = event.target.closest('form[data-netapp-search]');
 		if (form) schedule(form);
+	});
+	document.addEventListener('click', event => {
+		const button = event.target.closest?.('[data-netapp-search-clear]');
+		const form = button?.closest('form[data-netapp-search]');
+		if (!form) return;
+		event.preventDefault();
+		clearSearch(form);
+	});
+	document.addEventListener('keydown', event => {
+		if (event.key !== 'Escape' || event.isComposing || event.target.name !== 'search') return;
+		const form = event.target.closest('form[data-netapp-search]');
+		if (!form || !event.target.value) return;
+		event.preventDefault();
+		clearSearch(form);
 	});
 	document.addEventListener('compositionstart', event => {
 		if (!event.target.closest('form[data-netapp-search]')) return;
