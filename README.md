@@ -1,164 +1,200 @@
 # NetApp Monitoring for Zabbix 7.0
 
-A standalone, read-only frontend module for monitoring NetApp AFF A700 clusters using data
-already collected by `template_san_netapp_aff_a700_http.yaml`. No direct NetApp connection,
-credentials, build step, database changes, or other frontend module is required.
+A standalone frontend module for NetApp AFF A700 clusters monitored with
+`template_san_netapp_aff_a700_http.yaml`. It reads existing Zabbix data to show cluster health,
+capacity, performance, discovered resources, and problems. The module requires no direct
+NetApp connection, separate credentials, build step, or database changes.
 
 ## Installation
 
-1. Copy this directory into the Zabbix frontend's `modules/netapp_monitoring` directory
-   (commonly `/usr/share/zabbix/modules/netapp_monitoring`). Exclude `.git`, `.tools`, and tests.
-2. Give the web server read access to the module files.
-3. Open **Administration → General → Modules**, choose **Scan directory**, then enable
+1. Configure the supplied monitoring template in Zabbix, link it to your NetApp hosts, and
+   allow discovery and data collection to complete. The module does not import the template.
+2. Copy the module into the Zabbix frontend's `modules/netapp_monitoring` directory
+   (commonly `/usr/share/zabbix/modules/netapp_monitoring`). Runtime files are `manifest.json`,
+   `Module.php`, `actions/`, `includes/`, `views/`, and `assets/`.
+3. Give the web server read access to those files.
+4. Open **Administration → General → Modules**, select **Scan directory**, and enable
    **NetApp Monitoring**.
-4. Open **Monitoring → NetApp**.
-
-Configure the supplied monitoring template separately and allow its discovery rules and items
-to collect values before using the module. The YAML is reference monitoring configuration;
-the frontend module does not import or modify it.
+5. Open **Monitoring → NetApp**.
 
 ## Host eligibility and permissions
 
-Only hosts linked to a template whose visible or technical name contains
-`NetApp AFF A700 by HTTP` are eligible. For example, both `NetApp AFF A700 by HTTP` and
-`stp - NetApp AFF A700 by HTTP` qualify. Item keys alone never qualify a host.
-Template inheritance is followed to include hosts using a wrapper template.
+Hosts must use a template whose visible or technical name contains `NetApp AFF A700 by HTTP`.
+Prefixed names such as `stp - NetApp AFF A700 by HTTP` and inheritance through wrapper templates
+are supported. Matching item keys alone do not qualify a host.
 
-All data is read using the signed-in user's Zabbix API permissions. The user must have access
-to **Monitoring → Latest data**, permission to use the enabled module, and read access to the
-host and its matching template (including any wrapper templates in the inheritance chain).
-Zabbix template-group permissions control template visibility independently of host access;
-hosts whose template eligibility cannot be verified are excluded.
-An arbitrary host ID in a detail-page URL cannot bypass the template restriction.
-Native problem and history pages enforce their own permissions.
+The signed-in user needs access to **Monitoring → Latest data**, permission to use the module,
+and read access to the host and its matching templates. Template-group permissions apply
+independently of host permissions. Hosts whose template eligibility cannot be verified are
+excluded, including when their host ID is entered directly in a URL.
 
-## Views
+Monitoring data is read through the user's Zabbix API permissions. Native item, host, and
+problem menus expose only the actions allowed by that user's role and object permissions.
 
-- Cluster list with health, software version, discovered object counts, and problems.
-- Cluster overview with identity, collection timestamps, and navigation to native Zabbix data.
-- Nodes, SVMs, volumes, LUNs, Ethernet ports, FC ports, and hardware inventories.
-- Cluster and volume performance values with links to Zabbix history and graphs.
-- Active, unsuppressed problems linked to native Zabbix problem details.
-- The Problems tab uses Zabbix's native Problems widget with recent/recovered events, timeline,
-  operational data, the signed-in user's permitted problem actions, and pagination following
-  the user's **Rows per page** setting. Zabbix's global search limit caps the result set.
-  Matching symptoms remain visible. When a cause and its symptoms share a page, the symptoms
-  can be expanded beneath that cause; symptoms whose cause is on another page stay standalone.
-- Search, sorting, pagination using the user's rows-per-page setting, and blue/dark theme support.
-- Host inventory notes in the host list and detail pages, with notes included in host search.
-- Full-width expandable resource metrics, grouped into responsive panels.
-- Metric labels omit the resource name inside a resource's panel. Resources whose metrics are
-  already visible in the row have no redundant expander; clicking a latest value opens Zabbix's native item menu, with Item, Graph (numeric items),
-  Values, and 500 latest values, subject to the user's permissions and history retention.
-- Automatic search as you type and when host groups change; the native main filter also
-  provides optional Apply and Reset controls.
-- Main Hosts and Problems tabs share the Name and host-group filters. Name matches hosts,
-  technical host names and inventory notes. Problems aggregate the complete matching host
-  scope, including hosts beyond the current host-list page.
-- Host names open their detail page normally; right-click opens Zabbix's native host menu.
-- Paginated tables use Zabbix's native `CTableInfo` page-navigation support and `CPagerHelper`
-  controls throughout the module, preserving filters and the user's rows-per-page preference.
+## Hosts and problems
 
-The interface uses a context bar, summary strip, tabs, and native Zabbix tables.
-All implementation files and assets live in this directory.
+The main page has **Hosts** and **Problems** tabs with shared Name and host-group filters.
+Name searches visible host names, technical names, and host inventory notes. Host-group
+selection includes accessible descendants. Problems cover all matching hosts, including those
+beyond the current Hosts page.
 
-Set the host-level text macro `{$NETAPP.LOCATION}` to a comma-separated hierarchy, such as
-`Switzerland, Zurich, Rack 2`, to group the main Hosts table. Each ancestor shows the count
-of all matching hosts below it, including later pages. Groups can be collapsed; hosts without
-this macro appear after grouped hosts. Secret and vault macros are never used as labels.
-The host-group filter includes descendants and respects the user's accessible groups.
-Location rows also show severity badges in the Problems column. Counts include every active,
-unsuppressed event across the full matching subtree, including hosts on other pages. Shared
-events count once per ancestor, and clicking a badge opens native Problems for that subtree.
-Unavailable problem metadata displays **Unavailable** instead of a healthy zero count.
+The Hosts table shows cluster status, software version, resource counts, inventory notes,
+and active problem counts. Open a host name to view its details; right-click it to open
+Zabbix's native host menu. Tables follow the user's **Rows per page** setting.
 
-## Interpreting the data
+To group hosts by location, set the host-level text macro `{$NETAPP.LOCATION}` to a
+comma-separated path, for example:
 
-Object counts reflect discovered item groups visible to the current user, rather than a live
-NetApp inventory query. Missing discoveries, disabled items, and permission filters can affect
-counts. The template does not expose aggregate or disk capacity, disk models, snapshots, or
-SnapMirror details, so the module does not invent these metrics.
+```text
+Switzerland, Zurich, Rack 2
+```
 
-Volume capacity and LUN capacity are separate views of storage; do not add them together.
-Inventory tables group volumes and LUNs by SVM, and disks, Ethernet ports and FC ports by
-node using the existing template values and item keys. Missing ownership appears as
-Unavailable; retained SVM ownership is marked Stale when collection fails. Groups remain
-together when sorting, and repeat their heading when continued on another page. Resource
-counts reflect the current search across all pages; group headings do not consume page rows.
-SVM rows list their related volume and LUN names. Each name opens the appropriate inventory
-tab on the resource's page, clears the destination search, scrolls to the selected row and
-highlights it for five seconds. SVM search also matches those related resource names.
-Tab searches include a live Clear button and an Escape shortcut. Inventory searches match
-resource names, ownership, metric names/keys and latest values, report matching resource counts,
-and open metrics panels when a match would otherwise be hidden. Matching names are highlighted.
-Detail searches use a small JSON response containing the native results and host-status HTML,
-with an 80 ms typing delay. A private temporary cache reuses the signed-in user's collected
-snapshot for up to 10 seconds; current host access is checked on every request. Browser memory
-keeps up to eight recent query results for five seconds, allowing repeated queries and Clear
-to respond immediately. A normal page load or Refresh always collects current monitoring data.
-The server cache is optional: unavailable private temporary storage or oversized snapshots fall
-back to normal collection. Snapshots are never stored in Zabbix session cookies.
-Volume available space is the value reported by the template, rather than an assumed size-minus-used
-value. Performance metrics are already calculated by the template; the frontend does not derive
-rates from cumulative counters. Calculated latency values in the supplied template are already
-expressed in milliseconds.
+Location groups can be collapsed. Counts and severity badges include matching hosts throughout
+the subtree, across all pages, with shared events counted once per ancestor. Click a severity
+badge to open native Problems for that subtree. Hosts without a location appear after grouped
+hosts; secret and vault macros are not displayed as location labels.
 
-When NetApp HTTP collection fails, the module retains the last collected values and discovered
-resources. A prominent notice on every host tab explains the outage, shows failed check details
-and the latest stored sample time; the Hosts list also marks affected hosts. Retained values,
-including capacity, carry a **Stale** label and should not be interpreted as current health.
-Enabled unsupported items keep their last sample when history exists. Items with no collected
-sample remain unavailable, and disabled items do not expose their old values.
+## Host detail views
 
-Collection status comes from the template's HTTP master items and HTTP discovery rules.
-It does not infer failure from old scalar timestamps: unchanged values may be intentionally
-discarded by template heartbeat preprocessing. Use native Latest data to investigate the
-reported diagnostics. Collection warnings clear when HTTP checks recover.
-The Refresh action reloads stored Zabbix data; it does not execute HTTP checks or trigger discovery.
-Live search updates the detail status bar, collection warning, counters, and results from the same
-Zabbix snapshot. Failed or incomplete searches preserve the last consistent display.
+| Tab | Contents |
+| --- | --- |
+| Overview | Cluster identity, current cluster performance, and discovered resource counts. |
+| Nodes | Node state, membership, version, uptime, location, and temperature status. |
+| SVMs | SVM state and properties, with links to related volumes and LUNs. |
+| Volumes | State, ownership, capacity, and available performance metrics, grouped by SVM. |
+| LUNs | State and capacity, grouped by SVM. |
+| Ethernet / Fibre Channel | Discovered ports and their metrics, grouped by node where ownership is available. |
+| Hardware | Chassis, disks, and FRUs with discovered state information. |
+| Performance | Collected cluster IOPS, throughput, and latency metrics. |
+| Problems | Native Zabbix Problems widget scoped to this host. |
 
-## Development verification
+Resource rows expand to show additional metrics when available. Clicking a latest value opens
+Zabbix's native item menu with Item, Graph for numeric items, Values, and 500 latest values,
+subject to permissions and history retention. Blue and dark themes are supported.
 
-### Test without a NetApp appliance
+Search updates as you type. Inventory searches match names, ownership, metric names and keys,
+and latest values; matching names are highlighted and matching hidden metrics are expanded.
+Use **Clear** or Escape to reset a search. Links from an SVM to a volume or LUN open the
+resource's page, clear the destination search, and briefly highlight the selected row.
 
-Run `python dev/mock-netapp/demo.py up` to start a containerized fake NetApp HTTP API and install
-an isolated demo host/template. Use `python dev/mock-netapp/demo.py down` to remove the fixture.
-Healthy, degraded, and empty discovery scenarios exercise real Zabbix collection and triggers.
-See [the mock setup guide](dev/mock-netapp/README.md) for commands, endpoint addresses, and cleanup behavior.
+Problems views include unsuppressed recent problems and recoveries, timeline, operational data,
+and permitted native problem actions. Zabbix's global search limit caps the results. Matching
+symptoms are grouped under their cause when both are on the same page; otherwise they remain
+visible as standalone rows. Host and location severity counts represent active problems, so
+they can differ from a Problems view that also includes recent recoveries.
 
-Use a PHP runtime compatible with your Zabbix 7.0 frontend:
+## Data freshness and limitations
+
+Resource counts reflect discovered items visible to the current user. Discovery retention,
+disabled items, and permissions can affect the displayed inventory. The module does not
+provide aggregate or disk capacity, disk models, snapshots, or SnapMirror details.
+
+Volume and LUN capacity describe separate storage views and should not be added together.
+Available volume space comes from the template's reported value. Performance rates and
+latency are calculated by the template; calculated latency values are in milliseconds.
+Missing ownership or data is shown as **Unavailable**. Unavailable problem information is
+also labelled explicitly rather than displayed as a healthy zero.
+
+When HTTP master items or discovery rules fail, the module shows a collection warning with
+diagnostics and the latest stored sample time. Discovered resources and last collected values
+remain visible with **Stale** labels. Unsupported enabled items retain their last sample when
+history exists; disabled items do not expose old values. Collection status is based on HTTP
+checks, rather than the age of unchanged scalar values, which can be discarded by template
+heartbeat preprocessing.
+
+**Refresh** reloads stored Zabbix data; it does not execute NetApp checks or trigger discovery.
+Detail searches may reuse a private, session-scoped snapshot for up to 10 seconds, with host
+access checked on every request. A full page load or Refresh collects a fresh Zabbix snapshot.
+If temporary caching is unavailable, collection continues without it. Failed searches keep
+the last consistent display. Use **Latest data** to investigate collection errors and samples.
+
+## Screenshots
+
+### Inventory
+
+![NetApp inventory view](img/Invenotry.png)
+
+### Overview
+
+![NetApp cluster overview](img/Overview.png)
+
+### Nodes
+
+![NetApp nodes view](img/Nodes.png)
+
+### SVMs
+
+![NetApp SVMs view](img/Svms.png)
+
+### Volumes
+
+![NetApp volumes view](img/Volumes.png)
+
+### LUNs
+
+![NetApp LUNs view](img/Luns.png)
+
+## Development and verification
+
+### Demo without a NetApp appliance
+
+The demo requires Python 3.10+, Docker Compose, a running Zabbix 7.0 test environment, and
+permission to manage the demo hosts, templates, and groups. Run from the repository root:
+
+```powershell
+python dev/mock-netapp/demo.py up
+python dev/mock-netapp/demo.py status
+python dev/mock-netapp/demo.py scenario --scenario degraded
+python dev/mock-netapp/demo.py scenario --scenario unresponsive
+python dev/mock-netapp/demo.py scenario --scenario healthy
+python dev/mock-netapp/demo.py down
+```
+
+The available scenarios are `healthy`, `degraded`, `empty`, and `unresponsive`. The unresponsive
+scenario simulates HTTP timeouts while retaining existing Zabbix samples; alerts depend on the
+template's triggers. Empty discovery follows Zabbix's lost-resource retention and does not
+immediately remove previously discovered resources. `down` deletes the owned demo fixture,
+including its host history, and removes the demo container.
+
+See [the mock setup guide](dev/mock-netapp/README.md) for configuration, initial collection
+wait times, scenario behavior, and cleanup details.
+
+### Local checks
+
+Use a PHP runtime compatible with your Zabbix 7.0 frontend. Run from the repository root,
+replacing `/path/to/zabbix/ui` with your frontend source directory:
 
 ```powershell
 Get-ChildItem Module.php,actions,includes,views,tests -Filter *.php -Recurse | ForEach-Object { php -l $_.FullName }
 php tests/collector.php
 php tests/controllers.php
 php tests/location-groups.php
+php tests/search-snapshot.php
 php tests/problem-scope.php /path/to/zabbix/ui
+php tests/problem-symptoms.php /path/to/zabbix/ui
 php tests/views-smoke.php /path/to/zabbix/ui
+node tests/live-search.mjs
+node tests/metrics-toggle.mjs
+node tests/native-menus.mjs
+node tests/problem-toggle.mjs
+node tests/resource-focus.mjs
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-With the isolated demo already populated and its mock service intentionally stopped,
-`tests/live-collection.php` provides a read-only outage regression against the running frontend.
-Pass the frontend UI directory and provide `ZABBIX_USER`/`ZABBIX_PASSWORD` through the test
-process environment. It checks 18 failed HTTP checks and retained demo identity, capacity and
-latency, and never changes the mock or Zabbix configuration.
+`tests/latest-value-menu.mjs` additionally checks the native item menu and expects the Zabbix
+source checkout at `../../zabbix-src-7.0` relative to this module directory.
 
-`tests/live-group-problems.php` checks group severity counts against the live API using
-an in-memory location tree. It uses the same UI-directory argument and credentials, requires
-an eligible NetApp host, and works regardless of mock availability without changing host macros.
-
-For the local development container, the module directory is already bind-mounted. Run checks
-using its installed PHP runtime; no downloaded local PHP runtime is required:
+For a bind-mounted development container, use its PHP runtime, for example:
 
 ```powershell
 docker exec zabbix-dev-zabbix-dashboard-1 php /usr/share/zabbix/modules/zabbix-module-netapp-monitoring/tests/collector.php
-docker exec zabbix-dev-zabbix-dashboard-1 php /usr/share/zabbix/modules/zabbix-module-netapp-monitoring/tests/controllers.php
-docker exec zabbix-dev-zabbix-dashboard-1 php /usr/share/zabbix/modules/zabbix-module-netapp-monitoring/tests/views-smoke.php /usr/share/zabbix
 ```
 
-The tests use isolated API/controller fixtures. Deployment acceptance should also cover an
-authorized viewer, a restricted viewer, renamed and inherited templates, empty discoveries,
-unsupported items, and both frontend themes on a running Zabbix 7.0 instance.
+Optional live checks are `tests/live-collection.php`, `tests/live-group-problems.php`, and
+`tests/live-problems.php`. Pass the frontend UI directory and supply `ZABBIX_USER` and
+`ZABBIX_PASSWORD` through the process environment. The collection check requires the populated
+demo with HTTP collection failing; the Problems widget check requires the demo host. These
+checks read the running environment without changing monitoring configuration.
 
-Frontend action registration follows the [Zabbix 7.0 module documentation](https://www.zabbix.com/documentation/7.0/en/devel/modules/file_structure/actions).
+Deployment checks should cover restricted viewers, inherited templates, empty discoveries,
+unsupported items, collection failures, and both frontend themes.
