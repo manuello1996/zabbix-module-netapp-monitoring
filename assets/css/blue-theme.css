@@ -39,8 +39,6 @@
 .netapp-monitoring-muted { color: var(--netapp-monitoring-muted); }
 .netapp-monitoring-note { padding: 10px 12px; margin: 0 0 14px; border-left: 3px solid var(--netapp-monitoring-accent); background: var(--netapp-monitoring-surface); line-height: 1.6; }
 .netapp-monitoring-table-wrap { overflow-x: auto; }
-.netapp-monitoring-table-wrap > table > thead th { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; background: var(--netapp-monitoring-surface); }
-.netapp-monitoring-table-wrap > table > tbody > tr > td { padding-top: 12px; padding-bottom: 12px; vertical-align: top; }
 .netapp-monitoring-table-wrap > table > tbody > .netapp-monitoring-metrics-row > td { padding: 0; }
 .netapp-monitoring-resource-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; }
 .netapp-monitoring-inline-value { color: inherit; }

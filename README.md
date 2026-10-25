@@ -38,9 +38,30 @@ Name searches visible host names, technical names, and host inventory notes. Hos
 selection includes accessible descendants. Problems cover all matching hosts, including those
 beyond the current Hosts page.
 
+As on the VMware main page, a summary above the tabs shows **NetApp clusters**, **NetApp nodes**,
+**SVMs**, and **Volumes**. The counters cover all accessible clusters matching the current Name
+and host-group filters, across every table page. They load asynchronously with the table and
+update together on search, navigation, and Refresh. Unavailable resource counts are labelled explicitly.
+
 The Hosts table shows cluster status, software version, resource counts, inventory notes,
 and active problem counts. Open a host name to view its details; right-click it to open
 Zabbix's native host menu. Tables follow the user's **Rows per page** setting.
+Tables, sorting headers, pagination arrows, page links, and result counts use Zabbix's
+native components. Problems use the native Problems widget and pager, including when
+symptoms are grouped after event pagination. Paginated tables honor Zabbix's global search limit.
+
+As in the VMware module, the main page renders its controls immediately and requests
+monitoring data afterwards. Tabs, sorting, pagination, and filters update the results
+without reloading the page. Recent results are reused in this browser page for up to
+60 seconds; **Refresh** clears them and requests fresh data. Automatic polling is disabled.
+Failed refreshes retain the last displayed values and show an error with a retry action.
+
+Hosts are discovered through matching templates, rather than by scanning every host's
+items. Only the current Hosts page is summarized, with batched queries across its appliances.
+Counters and table resource counts share one batch of item identity metadata for all matching
+clusters; latest values are read only for the three cluster fields shown in the table.
+Full resource metrics are collected when opening
+an appliance's details. Location badges still include matching hosts on every page.
 
 To group hosts by location, set the host-level text macro `{$NETAPP.LOCATION}` to a
 comma-separated path, for example:
@@ -104,7 +125,7 @@ heartbeat preprocessing.
 
 **Refresh** reloads stored Zabbix data; it does not execute NetApp checks or trigger discovery.
 Detail searches may reuse a private, session-scoped snapshot for up to 10 seconds, with host
-access checked on every request. A full page load or Refresh collects a fresh Zabbix snapshot.
+access checked on every request. A full detail-page load or Refresh collects a fresh Zabbix snapshot.
 If temporary caching is unavailable, collection continues without it. Failed searches keep
 the last consistent display. Use **Latest data** to investigate collection errors and samples.
 
@@ -167,6 +188,7 @@ replacing `/path/to/zabbix/ui` with your frontend source directory:
 ```powershell
 Get-ChildItem Module.php,actions,includes,views,tests -Filter *.php -Recurse | ForEach-Object { php -l $_.FullName }
 php tests/collector.php
+php tests/summaries.php
 php tests/controllers.php
 php tests/location-groups.php
 php tests/search-snapshot.php
@@ -174,6 +196,7 @@ php tests/problem-scope.php /path/to/zabbix/ui
 php tests/problem-symptoms.php /path/to/zabbix/ui
 php tests/views-smoke.php /path/to/zabbix/ui
 node tests/live-search.mjs
+node tests/list-loading.mjs
 node tests/metrics-toggle.mjs
 node tests/native-menus.mjs
 node tests/problem-toggle.mjs

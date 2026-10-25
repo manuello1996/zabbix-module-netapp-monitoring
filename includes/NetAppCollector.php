@@ -104,6 +104,10 @@ class NetAppCollector {
 				$items[$id] = array_merge($items[$id], $value);
 			}
 		}
+		return self::withValues($items);
+	}
+
+	private static function withValues(array $items): array {
 		foreach ($items as &$item) {
 			$item['lastclock'] = (int) ($item['lastclock'] ?? 0);
 			$item['lastvalue'] = $item['lastclock'] > 0 && (int) ($item['status'] ?? 0) === 0 ? ($item['lastvalue'] ?? null) : null;
@@ -160,6 +164,111 @@ class NetAppCollector {
 		}
 		if ((int) $host['status'] !== 0) {
 			$result['warnings'][] = 'Monitoring is disabled for this host.';
+		}
+		return $result;
+	}
+
+	/** Full filtered inventory, shared by the main-page counters and current table page. */
+	public static function inventory(array $hosts): array {
+		$result = ['counts' => [], 'cluster_itemids' => [],
+			'totals' => ['clusters' => 0, 'nodes' => 0, 'svms' => 0, 'volumes' => 0]];
+		if (!$hosts) { return $result; }
+		$hosts = array_intersect_key(array_column($hosts, null, 'hostid'), self::listHosts());
+		if (!$hosts) { return $result; }
+		$hostids = array_map('strval', array_keys($hosts));
+		$patterns = [];
+		$resource_groups = ['nodes', 'svms', 'volumes', 'luns'];
+		$cluster_metrics = ['name', 'status', 'version'];
+		foreach (self::scalarKeys() as $base => $definition) {
+			if (in_array($definition[0], $resource_groups, true)
+					|| ($definition[0] === 'cluster' && in_array($definition[1], $cluster_metrics, true))) {
+				$patterns[] = $base.($definition[2] === 0 ? '' : '[*]');
+			}
+		}
+		// Metadata establishes resource identity even when an item has no history.
+		$metadata = API::Item()->get([
+			'output' => ['itemid', 'hostid', 'key_'], 'hostids' => $hostids,
+			'search' => ['key_' => $patterns], 'searchWildcardsEnabled' => true, 'searchByAny' => true
+		]);
+		$resources = [];
+		foreach (is_array($metadata) ? $metadata : [] as $item) {
+			$definition = self::classifyKey($item['key_']);
+			if ($definition === null || !isset($hosts[$item['hostid']])) { continue; }
+			[$group, $metric, $parameters] = $definition;
+			if ($group !== 'cluster') {
+				$resources[$item['hostid']][$group][json_encode($parameters)] = true;
+			}
+			elseif (in_array($metric, $cluster_metrics, true)) {
+				$result['cluster_itemids'][$item['hostid']][] = $item['itemid'];
+			}
+		}
+		$result['totals']['clusters'] = count($hosts);
+		foreach ($hosts as $hostid => $host) {
+			foreach ($resource_groups as $group) {
+				$count = is_array($metadata) ? count($resources[$hostid][$group] ?? []) : null;
+				$result['counts'][$hostid][$group] = $count;
+				if (array_key_exists($group, $result['totals'])) {
+					$result['totals'][$group] = $count === null ? null : $result['totals'][$group] + $count;
+				}
+			}
+		}
+		return $result;
+	}
+
+	/** Main-page summaries: fixed batch queries, no per-host snapshots or resource values. */
+	public static function collectSummaries(array $hosts, ?array $inventory = null): array {
+		if (!$hosts) { return []; }
+		$hosts = array_intersect_key(array_column($hosts, null, 'hostid'), self::listHosts());
+		if (!$hosts) { return []; }
+		$hostids = array_map('strval', array_keys($hosts));
+		$inventory = $inventory ?? self::inventory($hosts);
+		$clusterids = [];
+		foreach ($hostids as $hostid) {
+			foreach ($inventory['cluster_itemids'][$hostid] ?? [] as $itemid) { $clusterids[] = $itemid; }
+		}
+		// Read values only for the three cluster fields rendered by this table.
+		$cluster = $clusterids ? API::Item()->get([
+			'output' => ['itemid', 'hostid', 'name', 'key_', 'units', 'state', 'error', 'status',
+				'value_type', 'lastvalue', 'lastclock'], 'hostids' => $hostids, 'itemids' => $clusterids,
+			'selectValueMap' => ['mappings']
+		]) ?: [] : [];
+		$by_host = [];
+		foreach (self::withValues($cluster) as $item) { $by_host[$item['hostid']][] = $item; }
+		$options = ['output' => ['itemid', 'hostid', 'name', 'key_', 'type', 'status', 'state', 'error'],
+			'hostids' => $hostids];
+		$checks = API::Item()->get($options + ['filter' => ['type' => 19, 'key_' => self::httpKeys()]]);
+		$rules = API::DiscoveryRule()->get($options + ['filter' => ['type' => 19, 'key_' => self::httpKeys(true)]]);
+		$by_check = $by_rule = [];
+		foreach (is_array($checks) ? $checks : [] as $item) { $by_check[$item['hostid']][] = $item; }
+		foreach (is_array($rules) ? $rules : [] as $item) { $by_rule[$item['hostid']][] = $item; }
+		$problems = API::Problem()->get(['output' => ['eventid', 'objectid', 'severity'],
+			'hostids' => $hostids, 'recent' => false, 'suppressed' => false]);
+		$triggers = is_array($problems) && $problems ? API::Trigger()->get([
+			'output' => ['triggerid'], 'triggerids' => array_values(array_unique(array_column($problems, 'objectid'))),
+			'selectHosts' => ['hostid']
+		]) : [];
+		$relations = is_array($triggers) ? array_column($triggers, 'hosts', 'triggerid') : [];
+		$problems_available = is_array($problems) && is_array($triggers)
+			&& !array_diff(array_column($problems, 'objectid'), array_keys($relations));
+		$by_problem = [];
+		foreach (is_array($problems) ? $problems : [] as $problem) {
+			foreach ($relations[$problem['objectid']] ?? [] as $host) {
+				$by_problem[$host['hostid']][$problem['eventid']] = $problem;
+			}
+		}
+		$result = [];
+		foreach ($hosts as $hostid => $host) {
+			$summary = self::normalizeItems($by_host[$hostid] ?? []);
+			$summary['counts'] = $inventory['counts'][$hostid];
+			$summary['collection'] = self::collectionState(is_array($checks) ? ($by_check[$hostid] ?? []) : false,
+				is_array($rules) ? ($by_rule[$hostid] ?? []) : false, (int) $host['status'], $summary['lastclock']);
+			if ($summary['collection']['status'] === 'failed') {
+				foreach ($summary['cluster'] as &$item) { $item['stale'] = $item['lastvalue'] !== null; }
+				unset($item);
+			}
+			$summary['problems'] = array_values($by_problem[$hostid] ?? []);
+			$summary['problems_available'] = $problems_available;
+			$result[$hostid] = $summary;
 		}
 		return $result;
 	}

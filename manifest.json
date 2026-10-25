@@ -13,6 +13,11 @@
       "view": "netapp.monitoring.list",
       "layout": "layout.htmlpage"
     },
+    "netapp.monitoring.list.data": {
+      "class": "CControllerNetAppListData",
+      "view": "netapp.monitoring.list.content",
+      "layout": "layout.json"
+    },
     "netapp.monitoring.search": {
       "class": "CControllerNetAppSearch",
       "view": "netapp.monitoring.view",
@@ -24,5 +29,5 @@
       "layout": "layout.htmlpage"
     }
   },
-  "assets": {"css": ["blue-theme.css", "dark-theme.css"], "js": ["search.js", "metrics.js", "menus.js", "locations.js", "problems.js", "resources.js"]}
+  "assets": {"css": ["blue-theme.css", "dark-theme.css"], "js": ["search.js", "list.js", "metrics.js", "menus.js", "locations.js", "problems.js", "resources.js"]}
 }

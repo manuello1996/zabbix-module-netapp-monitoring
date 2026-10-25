@@ -29,11 +29,17 @@ class CSettingsHelper {
 	public const SEVERITY_NAME_3 = 'Average';
 	public const SEVERITY_NAME_4 = 'High';
 	public const SEVERITY_NAME_5 = 'Disaster';
-	public static function get($setting) { return $setting; }
+	public static function get($setting) { return $setting === self::SEARCH_LIMIT ? 1000 : $setting; }
+	public const SEARCH_LIMIT = 'search_limit';
 }
 require $zabbix.'/include/defines.inc.php';
 require $zabbix.'/include/translateDefines.inc.php';
 require $zabbix.'/include/js.inc.php';
+// Exercise Zabbix's actual sorting helper without loading unrelated application functions.
+preg_match('/^function make_sorting_header\(.*?^}/ms', file_get_contents($zabbix.'/include/func.inc.php'), $sorting_helper);
+eval($sorting_helper[0]);
+function zbx_value2array(&$value) { if (!is_array($value)) { $value = [$value]; } }
+
 require $zabbix.'/include/classes/core/CAutoloader.php';
 $loader = new CAutoloader();
 $paths = [];
@@ -62,7 +68,24 @@ class NetAppViewHarness {
 	}
 }
 function render(string $name, array $data): string {
-	return (new NetAppViewHarness())->render($name, $data);
+	CWebUser::$data = ['userid' => '1', 'rows_per_page' => $data['per_page'] ?? 50];
+	$view = new NetAppViewHarness();
+	$shell = $view->render($name, $data);
+	if ($name !== 'netapp.monitoring.list' || !empty($data['_shell'])) { return $shell; }
+	// Fixtures contain a preselected page; production paginates in ListData.
+	$data['paging'] = Modules\NetAppMonitoring\Includes\NetAppPager::forTotal(
+		$data['page'], $data['total_hosts'], $data['per_page'],
+		Modules\NetAppMonitoring\Includes\NetAppRenderer::listUrl($data, ['page' => null]));
+	$response = json_decode($view->render('netapp.monitoring.list.content', $data), true, 512, JSON_THROW_ON_ERROR);
+	$content = $response['html'];
+	$placeholder = (new CDiv(Modules\NetAppMonitoring\Includes\NetAppRenderer::listSummary(
+		array_fill_keys(['clusters', 'nodes', 'svms', 'volumes'], "\u{2014}"))))
+		->setId('netapp-list-summary')->setAttribute('aria-busy', 'true');
+	$updated = '<div id="netapp-list-summary" aria-busy="false">'.$response['summary'].'</div>';
+	$shell = str_replace((string) $placeholder, $updated, $shell);
+	$start = strpos($shell, '<div id="netapp-search-results"');
+	$end = strpos($shell, '</div>', $start) + 6;
+	return substr_replace($shell, $content, $start, $end - $start);
 }
 function check(bool $ok, string $message): void {
 	global $checks;
@@ -203,7 +226,8 @@ check(strpos($without_parent, '<span class="nowrap">nodes</span>') !== false,
 $list = ['hosts' => [$host], 'snapshots' => ['20' => $snapshot], 'total_hosts' => 2,
 	'search' => '"><script>alert(1)</script>', 'page' => 1, 'per_page' => 1, 'sort' => 'name', 'sortorder' => 'ASC'];
 $list += ['tab' => 'hosts', 'groupids' => ['31'], 'groups' => [['groupid' => '31', 'name' => '<script>Group</script>']],
-	'problem_widget' => $base['problem_widget'], 'problem_hostids' => ['20']];
+	'problem_widget' => $base['problem_widget'], 'problem_hostids' => ['20'],
+	'totals' => ['clusters' => 2, 'nodes' => 4, 'svms' => 6, 'volumes' => 100]];
 $list['hosts'][0]['location_path'] = ['CH', '<script>Zurich</script>'];
 $offpage = ['hostid' => '21', 'name' => 'Off-page host', 'location_path' => $list['hosts'][0]['location_path']];
 $list['location_groups'] = Modules\NetAppMonitoring\Includes\NetAppLocationGroups::withProblems(
@@ -211,7 +235,30 @@ $list['location_groups'] = Modules\NetAppMonitoring\Includes\NetAppLocationGroup
 	[['eventid' => '77', 'objectid' => '88', 'severity' => '4'], ['eventid' => '78', 'objectid' => '89', 'severity' => '4']],
 	[['triggerid' => '88', 'hosts' => [['hostid' => '20']]], ['triggerid' => '89', 'hosts' => [['hostid' => '21']]]]
 );
+$outputs['list-shell'] = render('netapp.monitoring.list', $list + ['_shell' => true]);
+check(strpos($outputs['list-shell'], 'Loading NetApp data...') !== false, 'Initial HTML displays the loading state');
+check(strpos($outputs['list-shell'], 'netapp-monitoring-hosts-table') === false, 'Initial HTML contains no monitoring table');
+check(strpos($outputs['list-shell'], 'aria-busy="true"') !== false, 'Deferred data region announces loading');
+check(strpos($outputs['list-shell'], 'id="netapp-list-summary" aria-busy="true"') !== false,
+	'Main counters render immediately with a loading state');
+foreach (['NetApp clusters', 'NetApp nodes', 'SVMs', 'Volumes'] as $label) {
+	check(strpos($outputs['list-shell'], $label) !== false, 'Initial page includes counter label '.$label);
+}
 $outputs['list'] = render('netapp.monitoring.list', $list);
+$counter_errors = libxml_use_internal_errors(true);
+$counter_dom = new DOMDocument();
+$counter_dom->loadHTML($outputs['list']);
+$counter_xpath = new DOMXPath($counter_dom);
+$figures = $counter_xpath->query('//div[@id="netapp-list-summary"]//div[@class="netapp-monitoring-card-value"]');
+check($figures->length === 4, 'Main page has four counters');
+foreach (['2', '4', '6', '100'] as $index => $count) {
+	check(trim($figures->item($index)->textContent) === $count, 'Counter displays the full filtered total '.$count);
+}
+libxml_clear_errors();
+libxml_use_internal_errors($counter_errors);
+$unavailable_counters = (string) Modules\NetAppMonitoring\Includes\NetAppRenderer::listSummary(
+	['clusters' => 2, 'nodes' => null, 'svms' => null, 'volumes' => null]);
+check(substr_count($unavailable_counters, 'Unavailable') === 3, 'Failed inventory counters remain explicitly unavailable');
 foreach (['netapp.monitoring.list', 'netapp.monitoring.view'] as $view_name) {
 	foreach (['multilineinput.js', 'items.js', 'class.tagfilteritem.js'] as $dependency) {
 		check(isset(NetAppViewHarness::$scripts[$view_name][$dependency]),
@@ -222,7 +269,7 @@ check(strpos($outputs['list'], '<script>') === false, 'List escapes hostile host
 check(strpos($outputs['list'], 'Fixture inventory notes') !== false, 'List displays inventory notes');
 check(strpos($outputs['list'], 'Go to next page, 2') !== false, 'List has native next page link');
 check(strpos($outputs['list'], 'class="table-paging"') !== false, 'Host list uses the native table pager');
-check(strpos($outputs['list'], 'data-netapp-main-filter="1"') !== false, 'Main filter uses native CFilter with live search hook');
+check(strpos($outputs['list'], 'data-netapp-list-filter="1"') !== false, 'Main filter uses native CFilter with live search hook');
 check(strpos($outputs['list'], 'filter_groupids[]') !== false, 'Native group multiselect is available');
 check(strpos($outputs['list'], 'data-netapp-host-link="1"') !== false && strpos($outputs['list'], 'data-menu-popup=') !== false,
 	'Host names support detail navigation and native contextual menu');
@@ -462,6 +509,12 @@ $_GET = ['action' => 'netapp.monitoring.search', 'hostid' => '20', 'tab' => 'vol
 $menu = (string) Modules\NetAppMonitoring\Includes\NetAppRenderer::itemMenu('Value', item('Metric', '1'));
 check(strpos($menu, 'netapp.monitoring.search') === false && strpos($menu, 'netapp.monitoring.view') !== false,
 	'Item menus always return to a normal page instead of the JSON endpoint');
+$_GET = ['action' => 'netapp.monitoring.list.data', 'tab' => 'hosts', 'search' => 'prod', 'page' => '2'];
+$menu = (string) Modules\NetAppMonitoring\Includes\NetAppRenderer::itemMenu('Value', item('Metric', '1'));
+check(strpos($menu, 'netapp.monitoring.list.data') === false && strpos($menu, 'netapp.monitoring.list') !== false,
+	'Deferred main-page item menus return to the HTML page');
+check(strpos($menu, 'search=prod') !== false && strpos($menu, 'page=2') !== false,
+	'Deferred item-menu return URLs preserve the active filters and page');
 $_GET = $original_get;
 
 if (isset($argv[2])) {

@@ -3,6 +3,15 @@ namespace Modules\NetAppMonitoring\Includes;
 
 /** Server-rendered, permission-scoped NetApp monitoring components. */
 class NetAppRenderer {
+	public static function listUrl(array $data, array $args = []): \CUrl {
+		$url = (new \CUrl('zabbix.php'))->setArgument('action', 'netapp.monitoring.list');
+		foreach (array_merge(['search' => $data['search'], 'filter_groupids' => $data['groupids'] ?? [],
+			'tab' => $data['tab'], 'sort' => 'name', 'sortorder' => $data['sortorder'], 'page' => $data['page']], $args) as $key => $value) {
+			$url->setArgument($key, $value);
+		}
+		return $url;
+	}
+
 	public static function url(array $args = []): \CUrl {
 		$url = (new \CUrl('zabbix.php'))->setArgument('action', 'netapp.monitoring.view');
 		foreach ($args as $key => $value) {
@@ -125,6 +134,15 @@ class NetAppRenderer {
 		]))->addClass('netapp-monitoring-statseg');
 	}
 
+	public static function listSummary(array $totals): \CDiv {
+		$stats = [];
+		foreach (['clusters' => _('NetApp clusters'), 'nodes' => _('NetApp nodes'),
+			'svms' => _('SVMs'), 'volumes' => _('Volumes')] as $key => $label) {
+			$stats[] = self::stat($label, isset($totals[$key]) ? (string) $totals[$key] : _('Unavailable'));
+		}
+		return (new \CDiv($stats))->addClass('netapp-monitoring-statstrip');
+	}
+
 	public static function section(string $title, $content): \CDiv {
 		return (new \CDiv([(new \CTag('h4', true, $title))->addClass('netapp-monitoring-section-title'), $content]))
 			->addClass('netapp-monitoring-section');
@@ -176,6 +194,9 @@ class NetAppRenderer {
 		parse_str(parse_url($backurl->getUrl(), PHP_URL_QUERY) ?? '', $arguments);
 		if (($arguments['action'] ?? '') === 'netapp.monitoring.search') {
 			$backurl->setArgument('action', 'netapp.monitoring.view');
+		}
+		elseif (($arguments['action'] ?? '') === 'netapp.monitoring.list.data') {
+			$backurl->setArgument('action', 'netapp.monitoring.list');
 		}
 		return (new \CLinkAction($label))->setMenuPopup(\CMenuPopupHelper::getItem([
 			'itemid' => $item['itemid'], 'context' => 'host', 'backurl' => $backurl->getUrl()
@@ -354,9 +375,9 @@ class NetAppRenderer {
 		}
 		$args = ['hostid' => $data['host']['hostid'], 'tab' => $data['tab'], 'search' => $search,
 			'sort' => $sort, 'sortorder' => $order];
+		$paging = \CPagerHelper::paginate($page, $rows, ZBX_SORT_UP, self::url($args));
 		$header = static function ($label, $field) use ($args, $sort, $order) {
-			return new \CLink($label.($sort === $field ? ($order === 'ASC' ? ' ↑' : ' ↓') : ''),
-				self::url(array_merge($args, ['sort' => $field, 'sortorder' => $sort === $field && $order === 'ASC' ? 'DESC' : 'ASC'])));
+			return make_sorting_header($label, $field, $sort, $order, self::url($args)->getUrl());
 		};
 		$capacity = in_array($data['tab'], ['volumes', 'luns'], true);
 		$table = (new \CTableInfo())->setHeader([$header(_('Name'), 'name'),
@@ -364,7 +385,7 @@ class NetAppRenderer {
 			$header(_('State'), 'state'), $capacity ? $header(_('Used / size'), 'used') : _('Properties'),
 			_('Last update')])->setNoDataMessage(_('No discovered resources match this view.'));
 		$previous_relationship = null;
-		foreach (array_slice($rows, ($page - 1) * $per_page, $per_page) as $row) {
+		foreach ($rows as $row) {
 			$key = json_encode([$row['_parent_kind'], $row['parent']]);
 			if ($row['_parent_kind'] !== '' && $key !== $previous_relationship) {
 				$label = $row['_parent_kind'] === 'svm' ? _('SVM') : _('Node');
@@ -461,7 +482,7 @@ class NetAppRenderer {
 			if (!$expanded) { $panel_row->setAttribute('hidden', 'hidden'); }
 			$table->addRow($panel_row);
 		}
-		$table->setPageNavigation(NetAppPager::forTotal($page, $total, $per_page, self::url($args)));
+		$table->setPageNavigation($paging);
 		$message = $search !== '' ? sprintf(_('%1$s of %2$s resources match'), $total,
 			array_sum(array_map(static function ($group) use ($data) {
 				return count($data['snapshot']['entities'][$group] ?? []);
