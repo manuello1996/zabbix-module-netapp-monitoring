@@ -15,26 +15,7 @@
 		}
 		return states.get(key);
 	};
-	const ancestors = row => {
-		try {
-			const values = JSON.parse(row.dataset.locationAncestors || '[]');
-			return Array.isArray(values) ? values : [];
-		}
-		catch (_) { return []; }
-	};
-	const apply = scope => {
-		const collapsed = load(scope);
-		scope.querySelectorAll('[data-location-ancestors]').forEach(row => {
-			row.hidden = ancestors(row).some(key => collapsed.has(key));
-		});
-		scope.querySelectorAll('[data-location-toggle]').forEach(button => {
-			const isCollapsed = collapsed.has(button.dataset.locationToggle);
-			button.setAttribute('aria-expanded', String(!isCollapsed));
-			button.classList.toggle('is-collapsed', isCollapsed);
-			const icon = button.querySelector('[data-location-icon]');
-			if (icon) icon.textContent = isCollapsed ? '\u25b6' : '\u25bc';
-		});
-	};
+	const apply = scope => window.NetAppCommon.LocationGroups.apply(scope, load(scope));
 	const initialize = () => document.querySelectorAll('[data-netapp-locations]').forEach(apply);
 	document.addEventListener('click', event => {
 		const button = event.target.closest('[data-location-toggle]');

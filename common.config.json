@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "source_directory": "zabbix-module-common",
+  "tokens": {
+    "CSS_PREFIX": "netapp-monitoring",
+    "BORDER": "netapp-monitoring-border",
+    "MUTED": "netapp-monitoring-muted",
+    "TEXT": "netapp-monitoring-text",
+    "STRONG": "netapp-monitoring-text",
+    "JS_NAMESPACE": "NetAppCommon",
+    "LOCATION_DATA_PREFIX": "location",
+    "LOCATION_DEPTH_VAR": "netapp-location-depth"
+  }
+}

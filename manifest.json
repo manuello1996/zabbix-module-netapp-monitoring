@@ -4,7 +4,7 @@
   "type": "module",
   "name": "NetApp Monitoring",
   "namespace": "NetAppMonitoring",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Manuel Pesenti",
   "description": "Cluster health, capacity, performance and discovered hardware for NetApp AFF A700 HTTP monitoring.",
   "actions": {
@@ -29,5 +29,5 @@
       "layout": "layout.htmlpage"
     }
   },
-  "assets": {"css": ["blue-theme.css", "dark-theme.css"], "js": ["search.js", "list.js", "metrics.js", "menus.js", "locations.js", "problems.js", "resources.js"]}
+  "assets": {"css": ["common.css", "components.css", "blue-theme.css", "dark-theme.css"], "js": ["common.js", "components.js", "search.js", "list.js", "metrics.js", "menus.js", "locations.js", "problems.js", "resources.js"]}
 }

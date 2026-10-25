@@ -116,6 +116,8 @@ namespace {
 	class CControllerResponseFatal {}
 	class CRoleHelper { public const UI_MONITORING_LATEST_DATA = 'monitoring.latest_data'; }
 	class CWebUser {
+		public static string $refresh = '30s';
+		public static function getRefresh() { return self::$refresh; }
 		public static bool $allowed = true;
 		public static array $data = ['rows_per_page' => 2];
 		public static array $checks = [];
@@ -139,6 +141,7 @@ namespace {
 		return in_array('1', $ids, true) ? array_merge($ids, ['2']) : $ids;
 	}
 	if (!function_exists('_')) { function _($text) { return $text; } }
+	function timeUnitToSeconds($value) { return (int) rtrim($value, 's'); }
 	require __DIR__.'/../includes/NetAppLocationGroups.php';
 	require __DIR__.'/../includes/NetAppSearchSnapshot.php';
 	require __DIR__.'/../actions/CControllerNetAppList.php';
@@ -180,6 +183,12 @@ namespace {
 	expect(API::$calls, [], 'Initial HTML without selected groups performs no API queries');
 	expect([$shell['search'], $shell['page']], ['netapp', 3], 'Shell preserves filters and requested page');
 	expect(isset($shell['snapshots']), false, 'Initial page contains controls only');
+	expect($shell['refresh_interval'], 30, 'Refresh interval follows the user preference');
+	foreach (['5s' => 10, '0' => 60] as $preference => $interval) {
+		CWebUser::$refresh = (string) $preference;
+		expect((new CControllerNetAppList())->run()->data['refresh_interval'], $interval, 'Shared refresh interval bounds and fallback');
+	}
+	CWebUser::$refresh = '30s';
 	CWebUser::$checks = [];
 	$controller = new CControllerNetAppListData();
 	$data = $controller->run()->data;

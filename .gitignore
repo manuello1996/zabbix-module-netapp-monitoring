@@ -3,3 +3,4 @@
 __pycache__/
 /dev/mock-netapp/.demo-state.json
 /dev/mock-netapp/.demo-state.tmp
+/dist/

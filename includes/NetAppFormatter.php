@@ -2,13 +2,14 @@
 
 namespace Modules\NetAppMonitoring\Includes;
 
+use Modules\NetAppMonitoring\Includes\Common\Formatting;
+
+require_once __DIR__.'/common/Formatting.php';
+
 class NetAppFormatter {
 	public static function bytes($value, int $decimals = 1): string {
 		if (!is_numeric($value)) { return '-'; }
-		$value = max(0, (float) $value);
-		$units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
-		$power = $value > 0 ? max(0, min(5, (int) floor(log($value, 1024)))) : 0;
-		return number_format($value / (1024 ** $power), $power === 0 ? 0 : $decimals).' '.$units[$power];
+		return Formatting::bytes($value, $decimals, ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']);
 	}
 
 	public static function number($value, int $decimals = 1): string {
@@ -29,11 +30,7 @@ class NetAppFormatter {
 
 	public static function duration($seconds): string {
 		if (!is_numeric($seconds)) { return '-'; }
-		$seconds = max(0, (int) $seconds);
-		$days = intdiv($seconds, 86400);
-		$hours = intdiv($seconds % 86400, 3600);
-		$minutes = intdiv($seconds % 3600, 60);
-		return $days > 0 ? $days.'d '.$hours.'h' : ($hours > 0 ? $hours.'h '.$minutes.'m' : $minutes.'m');
+		return Formatting::duration($seconds);
 	}
 
 	public static function state($value, string $healthy = 'ok'): array {

@@ -1,6 +1,17 @@
 <?php
 namespace Modules\NetAppMonitoring\Includes;
 
+use Modules\NetAppMonitoring\Includes\Common\RowDetails;
+use Modules\NetAppMonitoring\Includes\Common\Summary;
+use Modules\NetAppMonitoring\Includes\Common\CapacityBar;
+use Modules\NetAppMonitoring\Includes\Common\SortableHeader;
+use Modules\NetAppMonitoring\Includes\Common\ItemActions;
+use Modules\NetAppMonitoring\Includes\Common\Pager;
+
+use Modules\NetAppMonitoring\Includes\Common\SearchControl;
+
+require_once __DIR__.'/common/bootstrap.php';
+
 /** Server-rendered, permission-scoped NetApp monitoring components. */
 class NetAppRenderer {
 	public static function listUrl(array $data, array $args = []): \CUrl {
@@ -128,10 +139,7 @@ class NetAppRenderer {
 	}
 
 	public static function stat(string $label, $value): \CDiv {
-		return (new \CDiv([
-			(new \CDiv($label))->addClass('netapp-monitoring-statseg-label'),
-			(new \CDiv($value))->addClass('netapp-monitoring-card-value')
-		]))->addClass('netapp-monitoring-statseg');
+		return Summary::card($label, $value);
 	}
 
 	public static function listSummary(array $totals): \CDiv {
@@ -140,7 +148,7 @@ class NetAppRenderer {
 			'svms' => _('SVMs'), 'volumes' => _('Volumes')] as $key => $label) {
 			$stats[] = self::stat($label, isset($totals[$key]) ? (string) $totals[$key] : _('Unavailable'));
 		}
-		return (new \CDiv($stats))->addClass('netapp-monitoring-statstrip');
+		return Summary::strip($stats);
 	}
 
 	public static function section(string $title, $content): \CDiv {
@@ -152,6 +160,9 @@ class NetAppRenderer {
 		$percent = $capacity['percent'] ?? null;
 		$used = NetAppFormatter::bytes($capacity['used'] ?? null);
 		$size = NetAppFormatter::bytes($capacity['size'] ?? null);
+		$stale_items = array_filter([$size_item, $used_item], static function ($item) {
+			return $item && (($item['stale'] ?? false) || (int) ($item['state'] ?? 0) !== 0);
+		});
 		$items = [new \CSpan([
 			$used_item ? self::itemMenu($used, $used_item) : $used,
 			' / ',
@@ -159,14 +170,9 @@ class NetAppRenderer {
 		])];
 		if ($percent !== null) {
 			$items[] = new \CSpan(NetAppFormatter::percent($percent));
-			$items[] = (new \CDiv((new \CDiv())->addClass('netapp-monitoring-progress-fill')
-				->addClass($percent >= 90 ? 'netapp-monitoring-progress-critical' : '')
-				->setAttribute('style', 'width: '.number_format(max(0, min(100, $percent)), 2, '.', '').'%')))
-				->addClass('netapp-monitoring-progress');
+			$items[] = CapacityBar::render($percent, ['stale' => (bool) $stale_items]);
 		}
-		$stale_items = array_filter([$size_item, $used_item], static function ($item) {
-			return $item && (($item['stale'] ?? false) || (int) ($item['state'] ?? 0) !== 0);
-		});
+
 		if ($stale_items) {
 			$items[] = (new \CSpan(_('Stale')))->addClass('netapp-monitoring-stale-badge')
 				->setTitle(_('Capacity uses the last collected values. Inspect metric timestamps before interpreting usage.'));
@@ -188,7 +194,7 @@ class NetAppRenderer {
 	}
 
 	/** Use Zabbix's permission-aware item menu for every latest value. */
-	public static function itemMenu($label, array $item): \CLinkAction {
+	public static function itemMenu($label, array $item) {
 		$backurl = (new \CUrl('zabbix.php'))->formatGetArguments()->getUrl();
 		$backurl = (new \CUrl($backurl));
 		parse_str(parse_url($backurl->getUrl(), PHP_URL_QUERY) ?? '', $arguments);
@@ -198,9 +204,8 @@ class NetAppRenderer {
 		elseif (($arguments['action'] ?? '') === 'netapp.monitoring.list.data') {
 			$backurl->setArgument('action', 'netapp.monitoring.list');
 		}
-		return (new \CLinkAction($label))->setMenuPopup(\CMenuPopupHelper::getItem([
-			'itemid' => $item['itemid'], 'context' => 'host', 'backurl' => $backurl->getUrl()
-		]))->setTitle(_('Item actions'))->addClass('netapp-monitoring-inline-value');
+		return ItemActions::link($label, isset($item['itemid']) ? (string) $item['itemid'] : null,
+			$backurl->getUrl(), ['class' => 'netapp-monitoring-inline-value']);
 	}
 
 	public static function inlineValue(?array $item, bool $state = false) {
@@ -248,10 +253,9 @@ class NetAppRenderer {
 		}
 		$panels = [];
 		foreach ($groups as $label => $items) {
-			$panels[] = (new \CDiv([new \CTag('h5', true, $label), self::metricTable($items, '', $object, $highlight)]))
-				->addClass('netapp-monitoring-metric-group');
+			$panels[] = RowDetails::group($label, self::metricTable($items, '', $object, $highlight));
 		}
-		return (new \CDiv($panels))->addClass('netapp-monitoring-metric-grid');
+		return RowDetails::grid($panels);
 	}
 
 	public static function tabs(array $data): \CTag {
@@ -280,18 +284,11 @@ class NetAppRenderer {
 			$form->addVar('hostid', $data['host']['hostid'])->addVar('tab', $data['tab']);
 		}
 		$form->addVar('sort', $data['sort'] ?? 'name')->addVar('sortorder', $data['sortorder'] ?? 'ASC');
-		$form->addItem((new \CDiv([
-			new \CLabel($list ? _('Search hosts') : _('Search this tab'), 'netapp-search'),
-			(new \CTextBox('search', $data['search'] ?? ''))->setId('netapp-search')->addClass('netapp-monitoring-search')
-				->setAttribute('placeholder', $hint)->setAttribute('aria-describedby', 'netapp-search-hint'),
-			(new \CTag('button', true, _('Clear')))->setAttribute('type', 'button')
-				->setAttribute('data-netapp-search-clear', '1')->setAttribute('title', _('Clear search (Escape)'))
-				->setAttribute('aria-controls', 'netapp-search')->addClass(ZBX_STYLE_BTN_ALT),
-			(new \CSpan($hint))->setId('netapp-search-hint')->addClass('netapp-monitoring-search-hint'),
-			(new \CSpan($data['_search_message'] ?? ''))->setAttribute('data-netapp-search-status', '1')->setAttribute('role', 'status')
-				->setAttribute('data-searching', _('Searching…'))
-				->setAttribute('data-error', _('Search could not be updated. Results still show the previous search. Please try again.'))
-		]))->addClass('netapp-monitoring-filterbar'));
+		$form->addItem(SearchControl::bar($hint, $data['search'] ?? '', ['id' => 'netapp-search', 'name' => 'search'], [
+			'label' => $list ? _('Search hosts') : _('Search this tab'), 'message' => $data['_search_message'] ?? '',
+			'clear_attributes' => ['data-netapp-search-clear' => '1'],
+			'status_attributes' => ['data-netapp-search-status' => '1']
+		]));
 		return $form;
 	}
 
@@ -375,9 +372,9 @@ class NetAppRenderer {
 		}
 		$args = ['hostid' => $data['host']['hostid'], 'tab' => $data['tab'], 'search' => $search,
 			'sort' => $sort, 'sortorder' => $order];
-		$paging = \CPagerHelper::paginate($page, $rows, ZBX_SORT_UP, self::url($args));
+		$paging = Pager::paginate($page, $rows, ZBX_SORT_UP, self::url($args));
 		$header = static function ($label, $field) use ($args, $sort, $order) {
-			return make_sorting_header($label, $field, $sort, $order, self::url($args)->getUrl());
+			return SortableHeader::native($label, $field, $sort, $order, self::url($args)->getUrl());
 		};
 		$capacity = in_array($data['tab'], ['volumes', 'luns'], true);
 		$table = (new \CTableInfo())->setHeader([$header(_('Name'), 'name'),
@@ -428,14 +425,11 @@ class NetAppRenderer {
 			}
 			$clocks = array_column($m, 'lastclock');
 			$panel_id = 'netapp-metrics-'.sha1($data['host']['hostid'].'/'.$row['_group'].'/'.$row['id']);
-			$toggle = $expandable ? (new \CTag('button', true, _('Metrics').' ('.count($m).')'))
-				->setAttribute('type', 'button')->setId($panel_id.'-toggle')
-				->setAttribute('data-netapp-metrics-toggle', '1')
-				->setAttribute('aria-expanded', $expanded ? 'true' : 'false')->setAttribute('aria-controls', $panel_id)
-				->setAttribute('aria-label', _('Metrics').': '.$row['name'])
-				->addClass('netapp-monitoring-metrics-toggle') : null;
+			$toggle = $expandable ? RowDetails::toggle(_('Metrics').' ('.count($m).')', $panel_id, $expanded, [
+				'data-netapp-metrics-toggle' => '1', 'aria-label' => _('Metrics').': '.$row['name']
+			]) : null;
 			$parent = trim((string) ($row['parent'] ?? ''));
-			$name = [(new \CDiv([self::highlight($row['name'], $search), $toggle]))->addClass('netapp-monitoring-resource-name')];
+			$name = [RowDetails::name(self::highlight($row['name'], $search), $toggle)];
 			if ($row['_group'] === 'svms') {
 				$sections = [];
 				foreach (['volumes' => _('Volumes'), 'luns' => _('LUNs')] as $type => $label) {
@@ -475,11 +469,7 @@ class NetAppRenderer {
 			if (!$expandable) {
 				continue;
 			}
-			$panel = (new \CDiv(self::metricGroups($m, $row['name'], $search)))->setAttribute('role', 'region')
-				->setAttribute('aria-labelledby', $panel_id.'-toggle');
-			$panel_row = (new \CRow([(new \CCol($panel))->setColSpan(5)]))
-				->setId($panel_id)->addClass('netapp-monitoring-metrics-row');
-			if (!$expanded) { $panel_row->setAttribute('hidden', 'hidden'); }
+			$panel_row = RowDetails::row($panel_id, 5, self::metricGroups($m, $row['name'], $search), $expanded);
 			$table->addRow($panel_row);
 		}
 		$table->setPageNavigation($paging);
@@ -488,7 +478,7 @@ class NetAppRenderer {
 				return count($data['snapshot']['entities'][$group] ?? []);
 			}, $groups))) : '';
 		return new \CDiv([self::filter(array_replace($data, ['_search_message' => $message])),
-			(new \CDiv((new \CDiv($table))->addClass('netapp-monitoring-table-wrap')))->setId('netapp-search-results')
+			(new \CDiv(RowDetails::table($table)))->setId('netapp-search-results')
 				->setAttribute('data-netapp-search-message', $message)]);
 	}
 

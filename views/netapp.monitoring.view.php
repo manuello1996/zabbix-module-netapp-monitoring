@@ -1,5 +1,10 @@
 <?php declare(strict_types = 0);
+use Modules\NetAppMonitoring\Includes\Common\Summary;
+use Modules\NetAppMonitoring\Includes\Common\Breadcrumbs;
+
 use Modules\NetAppMonitoring\Includes\NetAppRenderer as R;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 // Native Item dialogs depend on these parent-page scripts.
 $this->addJsFile('multilineinput.js');
@@ -22,9 +27,7 @@ $page->setControls((new CTag('nav', true, (new CList())
 	->setAttribute('aria-label', _('Host actions')));
 $summary = (new CDiv())->setId('netapp-host-summary');
 $summary->addItem((new CDiv([
-	(new CDiv([new CLink(_('NetApp systems'), (new CUrl('zabbix.php'))->setArgument('action', 'netapp.monitoring.list')),
-		(new CSpan('›'))->addClass('netapp-monitoring-breadcrumb-sep'), new CSpan($data['host']['name'])]))
-		->addClass('netapp-monitoring-breadcrumb'),
+	Breadcrumbs::make([new CLink(_('NetApp systems'), (new CUrl('zabbix.php'))->setArgument('action', 'netapp.monitoring.list')), new CSpan($data['host']['name'])]),
 	(new CDiv([
 		$notes !== '' ? (new CTag('small', true, $notes))->addClass('netapp-monitoring-context-notes') : null,
 		(new CSpan([
@@ -42,7 +45,7 @@ foreach (['nodes' => _('Nodes'), 'svms' => _('SVMs'), 'volumes' => _('Volumes'),
 }
 $stats[] = R::stat(_('Active problems'), new CLink(($snapshot['problems_available'] ?? true)
 	? (string) count($snapshot['problems']) : _('Unavailable'), R::url(['hostid' => $hostid, 'tab' => 'problems'])));
-$summary->addItem((new CDiv($stats))->addClass('netapp-monitoring-statstrip'));
+$summary->addItem(Summary::strip($stats));
 foreach ($snapshot['warnings'] ?? [] as $warning) {
 	$summary->addItem((new CDiv($warning))->addClass('netapp-monitoring-note'));
 }

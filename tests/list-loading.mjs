@@ -61,7 +61,8 @@ const document = {
 	addEventListener(name, callback) { listeners.set(name, callback); },
 	dispatchEvent() {}
 };
-vm.runInNewContext(source, {
+vm.runInNewContext(readFileSync(new URL('../assets/js/common.js', import.meta.url), 'utf8') + '\n'
+	+ readFileSync(new URL('../assets/js/components.js', import.meta.url), 'utf8') + '\n' + source, {
 	document, window, URL, URLSearchParams, AbortController,
 	Date: class extends Date { static now() { return now; } },
 	CustomEvent: class {},

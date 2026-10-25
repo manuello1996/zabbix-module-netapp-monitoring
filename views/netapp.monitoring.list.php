@@ -1,5 +1,11 @@
 <?php declare(strict_types = 0);
+
+use Modules\NetAppMonitoring\Includes\Common\AutoRefresh;
+use Modules\NetAppMonitoring\Includes\Common\Breadcrumbs;
+
 use Modules\NetAppMonitoring\Includes\NetAppRenderer as R;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 // Native Item dialogs depend on these parent-page scripts.
 $this->addJsFile('multilineinput.js');
@@ -11,10 +17,12 @@ $list_url = static function (array $args = []) use ($data): CUrl {
 	return R::listUrl($data, $args);
 };
 $page = (new CHtmlPage())->setTitle(_('NetApp monitoring'))->setWebLayoutMode(CViewHelper::loadLayoutMode());
-$page->setControls((new CTag('nav', true, (new CList())->addItem(
-	(new CRedirectButton(_('Refresh'), $list_url()))->setAttribute('data-netapp-refresh', '1')
-)))->setAttribute('aria-label', _('NetApp actions')));
-$page->addItem((new CDiv((new CDiv(_('NetApp systems')))->addClass('netapp-monitoring-breadcrumb')))
+$page->setControls((new CTag('nav', true, (new CList())
+	->addItem((new CRedirectButton(_('Refresh'), $list_url()))->setAttribute('data-netapp-refresh', '1'))
+	->addItem(AutoRefresh::control('netapp-monitoring-auto-refresh', $data['refresh_interval'] ?? 60))
+))->setAttribute('aria-label', _('NetApp actions')));
+
+$page->addItem((new CDiv(Breadcrumbs::make([_('NetApp systems')])))
 	->addClass('netapp-monitoring-topbar'));
 
 $groups = array_map(static function (array $group): array {
@@ -56,6 +64,8 @@ foreach (['hosts' => _('Hosts'), 'problems' => _('Problems')] as $key => $label)
 }
 $page->addItem((new CTag('nav', true, $tabs))->addClass('netapp-monitoring-tabs')
 	->setAttribute('aria-label', _('NetApp sections')));
+
+$page->addItem(AutoRefresh::status('netapp-monitoring-refresh-status'));
 
 $page->addItem((new CDiv(_('Loading NetApp data...')))->setId('netapp-search-results')
 	->setAttribute('data-netapp-list', '1')->setAttribute('aria-busy', 'true')

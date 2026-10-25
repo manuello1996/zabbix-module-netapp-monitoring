@@ -1,8 +1,15 @@
 <?php declare(strict_types = 0);
+use Modules\NetAppMonitoring\Includes\Common\ProblemBadges;
+use Modules\NetAppMonitoring\Includes\Common\SortableHeader;
+use Modules\NetAppMonitoring\Includes\Common\Pager;
+
 use Modules\NetAppMonitoring\Includes\NetAppRenderer as R;
 use Modules\NetAppMonitoring\Includes\NetAppPager;
 use Modules\NetAppMonitoring\Includes\NetAppLocationGroups;
+use Modules\NetAppMonitoring\Includes\Common\LocationRows;
 use Widgets\Problems\Includes\WidgetProblems;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 $tab = $data['tab'];
 $list_url = static function (array $args = []) use ($data): CUrl {
@@ -29,24 +36,13 @@ if ($tab === 'problems') {
 }
 
 $severity_badges = static function (array $severities, array $hostids, bool $available = true) {
-	$url = (new CUrl('zabbix.php'))->setArgument('action', 'problem.view')
-		->setArgument('hostids', $hostids ?: ['0'])->setArgument('filter_set', 1);
-	if (!$available) { return new CLink(_('Unavailable'), $url); }
-	if (!$severities) { return (new CLink(_('None'), $url))->addClass(ZBX_STYLE_GREEN); }
-	krsort($severities);
-	$badges = [];
-	foreach ($severities as $severity => $count) {
-		$badges[] = (new CSpan((string) $count))->addClass(ZBX_STYLE_PROBLEM_ICON_LIST_ITEM)
-			->addClass(CSeverityHelper::getStatusStyle($severity))->setTitle(CSeverityHelper::getName($severity));
-	}
-	return (new CLink((new CDiv($badges))->addClass(ZBX_STYLE_PROBLEM_ICON_LIST), $url))
-		->addClass(ZBX_STYLE_PROBLEM_ICON_LINK);
+	return ProblemBadges::link($severities, $hostids, ['available' => $available, 'empty_link' => true]);
 };
 $problem_badge = static function (array $snapshot, string $hostid) use ($severity_badges) {
 	return $severity_badges(array_count_values(array_column($snapshot['problems'], 'severity')), [$hostid],
 		$snapshot['problems_available'] ?? true);
 };
-$name_header = make_sorting_header(_('Host / cluster'), 'name', 'name', $data['sortorder'],
+$name_header = SortableHeader::native(_('Host / cluster'), 'name', 'name', $data['sortorder'],
 	$list_url(['page' => null])->getUrl());
 $table = (new CTableInfo())->setId('netapp-monitoring-hosts-table')->setHeader([$name_header, _('Notes'), _('Status'), _('Version'), _('Nodes'),
 	_('SVMs'), _('Volumes'), _('LUNs'), _('Problems'), _('Actions')])
@@ -56,18 +52,9 @@ foreach ($data['hosts'] as $host) {
 	$hostid = (string) $host['hostid'];
 	foreach ($headers[$hostid] ?? [] as $key) {
 		$group = $data['location_groups'][$key];
-		$button = (new CButton(null, [
-			(new CSpan())->addClass('netapp-monitoring-location-chevron')->setAttribute('aria-hidden', 'true'),
-			(new CSpan($group['label']))->addClass('netapp-monitoring-location-name')
-		]))->addClass('netapp-monitoring-location-toggle')->setAttribute('data-location-toggle', $key)
-			->setAttribute('aria-expanded', 'true');
-		$label = (new CDiv([$button, (new CSpan(sprintf(_('%1$s hosts'), $group['count'])))
-			->addClass('netapp-monitoring-location-count')]))->addClass('netapp-monitoring-location-group')
-			->setAttribute('style', '--netapp-location-depth: '.(int) $group['depth']);
-		$table->addRow((new CRow([(new CCol($label))->setColSpan(8),
-			$severity_badges($group['problems'] ?? [], $group['hostids'], $group['problems_available'] ?? false), '']))
-			->addClass('netapp-monitoring-location-row')->setAttribute('data-location-key', $key)
-			->setAttribute('data-location-ancestors', json_encode($group['ancestors'])));
+		$table->addRow(LocationRows::header($group, sprintf(_('%1$s hosts'), $group['count']), [
+			$severity_badges($group['problems'] ?? [], $group['hostids'], $group['problems_available'] ?? false), ''
+		], 8));
 	}
 	$snapshot = $data['snapshots'][$hostid];
 	$counts = [];
@@ -76,13 +63,13 @@ foreach ($data['hosts'] as $host) {
 			? ($snapshot['counts'][$group] === null ? _('Unavailable') : (string) $snapshot['counts'][$group])
 			: (string) count($snapshot['entities'][$group] ?? []), R::url(['hostid' => $hostid, 'tab' => $group]));
 	}
-	$ancestors = array_map([NetAppLocationGroups::class, 'key'], NetAppLocationGroups::ancestors($host['location_path'] ?? []));
+	$ancestors = NetAppLocationGroups::ancestorKeys($host['location_path'] ?? []);
 	$name = (new CLink($host['name'], R::url(['hostid' => $hostid])))
 		->setMenuPopup(CMenuPopupHelper::getHost($hostid))->setAttribute('data-netapp-host-link', '1');
 	$name_cell = (new CDiv([$name, (new CDiv(R::inlineValue($snapshot['cluster']['name'] ?? null)))
 		->addClass('netapp-monitoring-muted')]))->addClass('netapp-monitoring-location-host')
 		->setAttribute('style', '--netapp-location-depth: '.count($ancestors));
-	$table->addRow((new CRow(array_merge([
+	$table->addRow(LocationRows::withAncestors(new CRow(array_merge([
 		$name_cell,
 		(new CDiv($host['inventory']['notes'] ?? ''))->addClass('netapp-monitoring-host-notes-preview')
 			->setTitle($host['inventory']['notes'] ?? ''),
@@ -92,7 +79,7 @@ foreach ($data['hosts'] as $host) {
 		R::inlineValue($snapshot['cluster']['version'] ?? null)
 	], $counts, [
 		$problem_badge($snapshot, $hostid), new CLink(_('Latest data'), R::latest($hostid))
-	])))->setAttribute('data-location-ancestors', json_encode($ancestors)));
+	])), $ancestors));
 }
 $table->setPageNavigation($data['paging']);
 $results->addItem((new CDiv($table))->addClass('netapp-monitoring-table-wrap')->setAttribute('data-netapp-locations', '1')

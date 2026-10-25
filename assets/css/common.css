@@ -1,0 +1,59 @@
+/* Generated from zabbix-module-common. Module prefixes isolate installed versions. */
+.netapp-monitoring-tabs {
+	display: flex;
+	gap: 4px;
+	margin: 14px 0 16px;
+	border-bottom: 1px solid var(--netapp-monitoring-border);
+}
+
+.netapp-monitoring-tab {
+	padding: 9px 12px 11px;
+	margin-bottom: -1px;
+	border-bottom: 2px solid transparent;
+	color: var(--netapp-monitoring-muted);
+	white-space: nowrap;
+}
+
+.netapp-monitoring-tab:hover {
+	color: var(--netapp-monitoring-text);
+	text-decoration: none;
+}
+
+.netapp-monitoring-tab-active {
+	color: var(--netapp-monitoring-text);
+	border-bottom-color: var(--netapp-monitoring-text);
+	font-weight: bold;
+}
+
+/* The complete NetApp search bar, isolated from legacy module input styles. */
+.netapp-monitoring-tab-search {
+	--netapp-monitoring-tab-search-bg: #fff;
+	--netapp-monitoring-tab-search-border: #e0e4e9;
+	--netapp-monitoring-tab-search-muted: #647580;
+	display: flex;
+	align-items: center;
+	gap: 10px 14px;
+	flex-wrap: wrap;
+	padding: 12px 16px;
+	margin: 0 0 14px;
+	background: var(--netapp-monitoring-tab-search-bg);
+	border: 1px solid var(--netapp-monitoring-tab-search-border);
+	border-radius: 8px;
+}
+
+.netapp-monitoring-tab-search-input {
+	width: 260px;
+	max-width: 100%;
+}
+
+.netapp-monitoring-tab-search-hint {
+	color: var(--netapp-monitoring-tab-search-muted);
+	font-size: 11px;
+}
+
+html[theme="dark-theme"] .netapp-monitoring-tab-search,
+html[theme="hc-dark"] .netapp-monitoring-tab-search {
+	--netapp-monitoring-tab-search-bg: #2b2b2b;
+	--netapp-monitoring-tab-search-border: #454545;
+	--netapp-monitoring-tab-search-muted: #b4b4b4;
+}

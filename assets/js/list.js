@@ -16,6 +16,13 @@
 		let generation = 0;
 		let hasData = false;
 		let restoring = false;
+		let loading = false;
+		const autoRefresh = new window.NetAppCommon.AutoRefresh({
+			control: document.getElementById('netapp-monitoring-auto-refresh'),
+			status: document.getElementById('netapp-monitoring-refresh-status'),
+			isBusy: () => loading,
+			onRefresh: () => load(window.location.href, {historyMode: null, refresh: true})
+		});
 		const normalize = value => {
 			const url = new URL(value, window.location.href);
 			url.searchParams.set('action', 'netapp.monitoring.list');
@@ -43,6 +50,8 @@
 			document.querySelector('[data-netapp-refresh]')?.setAttribute('data-url', url.href);
 		};
 		const load = async (value, {historyMode = 'push', refresh = false, restoreGroups = false} = {}) => {
+			autoRefresh.pause();
+			loading = true;
 			clearTimeout(timer);
 			controller?.abort();
 			const current = ++generation;
@@ -54,6 +63,7 @@
 			results.setAttribute('aria-busy', 'true');
 			summary.setAttribute('aria-busy', 'true');
 			if (status) status.textContent = messages.loading;
+			autoRefresh.setStatus(messages.loading);
 			const keepContent = refresh && hasData;
 			if (!keepContent) {
 				hasData = false;
@@ -64,7 +74,7 @@
 			controller = request;
 			try {
 				let data = recent.get(url.href);
-				if (!data || Date.now() - data.loadedAt >= 60000) {
+				if (!data || Date.now() - data.loadedAt >= autoRefresh.cacheLifetime) {
 					const target = new URL(url);
 					target.searchParams.set('action', 'netapp.monitoring.list.data');
 					const response = await fetch(target, {cache: 'no-store', credentials: 'same-origin', signal: request.signal});
@@ -96,22 +106,27 @@
 					finally { restoring = false; }
 				}
 				if (status) status.textContent = '';
+				autoRefresh.updated(data.loadedAt);
 				document.dispatchEvent(new CustomEvent('zbx_reload', {detail: {source: 'netapp-monitoring-list'}}));
 			}
 			catch (error) {
 				if (current !== generation || error.name === 'AbortError') return;
 				if (status) status.textContent = keepContent ? messages.refreshError : messages.loadError;
+				autoRefresh.setStatus(keepContent ? messages.refreshError : messages.loadError);
 				if (!keepContent) results.textContent = messages.loadError;
 			}
 			finally {
 				if (current === generation) {
 					results.setAttribute('aria-busy', 'false');
 					summary.setAttribute('aria-busy', 'false');
+					loading = false;
+					autoRefresh.resume();
 				}
 			}
 		};
 		const search = (immediate = false) => {
 			if (restoring) return;
+			autoRefresh.pause();
 			clearTimeout(timer);
 			controller?.abort();
 			generation++;
@@ -124,6 +139,7 @@
 			if (event.target === input && !event.isComposing) search();
 		});
 		form.addEventListener('compositionstart', () => {
+			autoRefresh.pause();
 			clearTimeout(timer);
 			controller?.abort();
 			generation++;

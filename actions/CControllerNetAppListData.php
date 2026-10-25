@@ -4,13 +4,15 @@ namespace Modules\NetAppMonitoring\Actions;
 
 use API;
 use CControllerResponseData;
-use CPagerHelper;
+use Modules\NetAppMonitoring\Includes\Common\Pager as CPagerHelper;
 use CSettingsHelper;
 use CWebUser;
 use Modules\NetAppMonitoring\Includes\NetAppCollector;
 use Modules\NetAppMonitoring\Includes\NetAppLocationGroups;
 use Modules\NetAppMonitoring\Includes\NetAppProblems;
 use Modules\NetAppMonitoring\Includes\NetAppRenderer;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 /** Permission-checked data request for the lightweight main page, as in VMware. */
 class CControllerNetAppListData extends CControllerNetAppList {

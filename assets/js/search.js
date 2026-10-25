@@ -1,6 +1,5 @@
 /* Search the complete server-side dataset without replacing the active input. */
 (() => {
-	let timer;
 	let controller;
 	let generation = 0;
 	const recent = new Map();
@@ -13,13 +12,6 @@
 		recent.set(key, {html, expires});
 		while (recent.size > 8) recent.delete(recent.keys().next().value);
 	};
-	const clearSearch = form => {
-		const input = form.querySelector('[name="search"]');
-		if (!input) return;
-		input.value = '';
-		input.focus();
-		schedule(form, true);
-	};
 	const prepareFilter = () => {
 		const form = document.querySelector('[data-netapp-main-filter] form');
 		if (!form) return;
@@ -30,7 +22,7 @@
 		}
 	};
 	const schedule = (form, immediate = false) => {
-		clearTimeout(timer);
+		searchInput.cancel();
 		controller?.abort();
 		const current = ++generation;
 		const status = form.querySelector('[data-netapp-search-status]');
@@ -75,7 +67,7 @@
 		}
 		results.setAttribute('aria-busy', 'true');
 		if (status) status.textContent = status.dataset.searching;
-		timer = setTimeout(async () => {
+		searchInput.queue(async () => {
 			controller = new AbortController();
 			try {
 				const requestUrl = new URL(url);
@@ -94,41 +86,13 @@
 				results.removeAttribute('aria-busy');
 				if (status) status.textContent = status.dataset.error;
 			}
-		}, immediate ? 0 : 80);
+		}, immediate);
 	};
-	document.addEventListener('input', event => {
-		if (event.target.name !== 'search' || event.isComposing) return;
-		const form = event.target.closest('form[data-netapp-search]');
-		if (form) schedule(form);
-	});
-	document.addEventListener('click', event => {
-		const button = event.target.closest?.('[data-netapp-search-clear]');
-		const form = button?.closest('form[data-netapp-search]');
-		if (!form) return;
-		event.preventDefault();
-		clearSearch(form);
-	});
-	document.addEventListener('keydown', event => {
-		if (event.key !== 'Escape' || event.isComposing || event.target.name !== 'search') return;
-		const form = event.target.closest('form[data-netapp-search]');
-		if (!form || !event.target.value) return;
-		event.preventDefault();
-		clearSearch(form);
-	});
-	document.addEventListener('compositionstart', event => {
-		if (!event.target.closest('form[data-netapp-search]')) return;
-		clearTimeout(timer);
-		controller?.abort();
-		generation++;
-	});
-	document.addEventListener('compositionend', event => {
-		const form = event.target.closest('form[data-netapp-search]');
-		if (form) schedule(form);
-	});
-	document.addEventListener('submit', event => {
-		if (!event.target.matches('form[data-netapp-search]')) return;
-		event.preventDefault();
-		schedule(event.target, true);
+	const searchInput = new window.NetAppCommon.SearchInput(document, {
+		selector: '[name="search"]', formSelector: 'form[data-netapp-search]',
+		clearSelector: '[data-netapp-search-clear]', delay: 80,
+		onChange: (input, immediate) => schedule(input.closest('form[data-netapp-search]'), immediate),
+		onCancel: () => { controller?.abort(); generation++; }
 	});
 	if (document.readyState === 'loading') {
 		document.addEventListener('DOMContentLoaded', prepareFilter, {once: true});

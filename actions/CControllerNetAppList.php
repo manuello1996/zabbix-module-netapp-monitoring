@@ -2,12 +2,16 @@
 
 namespace Modules\NetAppMonitoring\Actions;
 
+use Modules\NetAppMonitoring\Includes\Common\AutoRefresh;
+
 use API;
 use CController;
 use CControllerResponseData;
 use CControllerResponseFatal;
 use CRoleHelper;
 use CWebUser;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 class CControllerNetAppList extends CController {
 
@@ -49,7 +53,8 @@ class CControllerNetAppList extends CController {
 		$response = new CControllerResponseData([
 			'tab' => $tab, 'groupids' => $groupids, 'groups' => array_values($groups),
 			'search' => $search, 'page' => (int) $this->getInput('page', 1),
-			'per_page' => $per_page, 'sort' => 'name', 'sortorder' => $order
+			'per_page' => $per_page, 'sort' => 'name', 'sortorder' => $order,
+			'refresh_interval' => AutoRefresh::interval(timeUnitToSeconds(CWebUser::getRefresh()))
 		]);
 		$response->setTitle(_('NetApp clusters'));
 		$this->setResponse($response);

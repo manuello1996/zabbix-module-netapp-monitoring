@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../assets/js/search.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../assets/js/common.js', import.meta.url), 'utf8') + '\n'
+	+ readFileSync(new URL('../assets/js/search.js', import.meta.url), 'utf8');
 const listeners = new Map();
 const timers = new Map();
 const requests = [];
@@ -27,7 +28,7 @@ results = result('initial');
 const form = {values: {action: 'netapp.monitoring.view', hostid: '10715', tab: 'volumes', search: '', sort: 'name', sortorder: 'ASC'},
 	querySelector(selector) { return selector === '[name="search"]' ? input : status; }, matches() { return true; }, setAttribute(name, value) { this[name] = value; }};
 let focused = false;
-const input = {name: 'search', get value() { return form.values.search; }, set value(value) { form.values.search = value; },
+const input = {name: 'search', matches: selector => selector === '[name="search"]', get value() { return form.values.search; }, set value(value) { form.values.search = value; },
 	focus() { focused = true; }, closest() { return form; }};
 const window = {location: {href: 'http://127.0.0.1/zabbix.php?action=netapp.monitoring.view&page=3'},
 	history: {replaceState(_state, _title, url) { window.location.href = url.toString(); }}};
