@@ -1,4 +1,4 @@
-/* Native Zabbix menus expect edit handlers on the page's global view object. */
+/* NetApp host navigation; native item and editing behavior comes from common. */
 (() => {
 	const selector = '[data-netapp-host-link]';
 	// Keep the ordinary host link and use Zabbix's menu only on right click.
@@ -24,61 +24,4 @@
 		}
 		finally { delete link.dataset.netappContextMenu; }
 	}, true);
-	const install = () => {
-		const action = new URL(window.location.href).searchParams.get('action');
-		if (!['netapp.monitoring.list', 'netapp.monitoring.view'].includes(action)) return;
-		if (typeof getMenuPopupItem === 'function') {
-			const nativeItemMenu = getMenuPopupItem;
-			window.getMenuPopupItem = options => {
-				const sections = nativeItemMenu(options);
-				const sourceAction = new URLSearchParams((options.backurl || '').split('?')[1]).get('action');
-				if (!['netapp.monitoring.list', 'netapp.monitoring.view'].includes(sourceAction)) return sections;
-				const allowed = new Set([t('Item'), t('Graph'), t('Values'), t('500 latest values')]);
-				return sections.map(section => ({...section, items: section.items.filter(item =>
-					allowed.has(item.label) && (item.label !== t('Graph') || options.showGraph))}))
-					.filter(section => section.items.length)
-					.sort((a, b) => Number(b.items.some(item => item.label === t('Item')))
-						- Number(a.items.some(item => item.label === t('Item'))));
-			};
-		}
-		const pageView = typeof view === 'object' && view !== null ? view : (window.view ??= {});
-		const open = (action, data, dialogueid, target) => {
-			const originalUrl = window.location.href;
-			if (typeof clearMessages === 'function') clearMessages();
-			const overlay = PopUp(action, data, {
-				dialogueid, dialogue_class: 'modal-popup-large',
-				trigger_element: target, prevent_navigation: true
-			});
-			const dialogue = overlay?.$dialogue?.[0];
-			if (!dialogue) return;
-			const restoreUrl = () => window.history.replaceState(null, '', originalUrl);
-			dialogue.addEventListener('dialogue.close', restoreUrl, {once: true});
-			dialogue.addEventListener('dialogue.submit', event => {
-				restoreUrl();
-				const success = event.detail?.success;
-				if (success && typeof postMessageOk === 'function') {
-					postMessageOk(success.title);
-					if (success.messages && typeof postMessageDetails === 'function') {
-						postMessageDetails('success', success.messages);
-					}
-				}
-				window.location.reload();
-			}, {once: true});
-		};
-		if (typeof pageView.editTrigger !== 'function') {
-			pageView.editTrigger = data => open('trigger.edit', data, 'trigger-edit');
-		}
-		if (typeof pageView.editItem !== 'function') {
-			pageView.editItem = (target, data) => open('item.edit', data, 'item-edit', target);
-		}
-		if (typeof pageView.editHost !== 'function') {
-			pageView.editHost = hostid => open('popup.host.edit', {hostid: String(hostid)}, 'host_edit');
-		}
-	};
-	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', install, {once: true});
-	}
-	else {
-		install();
-	}
 })();

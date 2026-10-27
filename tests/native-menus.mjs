@@ -20,7 +20,14 @@ const setup = (action = 'netapp.monitoring.view', existing, loading = false) => 
 		clearMessages() {}, postMessageOk(title) { calls.push(['success', title]); }
 	};
 	if (existing) context.view = existing;
-	vm.runInNewContext(source, context);
+	vm.createContext(context);
+	for (const file of ['common.js', 'components.js']) vm.runInContext(readFileSync(new URL('../assets/js/' + file, import.meta.url), 'utf8'), context);
+	vm.runInContext(source, context);
+	// ItemActions::init($this) emits this call on DOM ready, only on module views.
+	if (action.startsWith('netapp.monitoring.')) {
+		if (loading) listeners.set('DOMContentLoaded', () => window.NetAppCommon.ItemActions.install());
+		else window.NetAppCommon.ItemActions.install();
+	}
 	return {window, calls, listeners};
 };
 const env = setup();

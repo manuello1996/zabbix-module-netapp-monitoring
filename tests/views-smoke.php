@@ -53,7 +53,10 @@ $loader->addNamespace('Widgets\\Problems', [$zabbix.'/widgets/problems']);
 $loader->addNamespace('Modules\\NetAppMonitoring', [dirname(__DIR__)]);
 $loader->register();
 
-class NetAppViewHarness {
+class CCsrfTokenHelper { public static function get($scope) { return 'fixture-token'; } }
+class NetAppViewHarness extends CView {
+	public function __construct() {}
+	public function getJsFiles(): array { return array_keys(self::$scripts[$this->name] ?? []); }
 	public static array $scripts = [];
 	private string $name;
 	public function addJsFile(string $script): self {
@@ -71,6 +74,14 @@ function render(string $name, array $data): string {
 	CWebUser::$data = ['userid' => '1', 'rows_per_page' => $data['per_page'] ?? 50];
 	$view = new NetAppViewHarness();
 	$shell = $view->render($name, $data);
+	if (in_array($name, ['netapp.monitoring.list', 'netapp.monitoring.view'], true)) {
+		$init = (string) (new CScriptTag('window.NetAppCommon.ItemActions.install('.json_encode(
+			Modules\NetAppMonitoring\Includes\Common\ItemActions::options(),
+			JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT).');'))->setOnDocumentReady();
+		check(substr_count($shell, (string) $init) === 1, 'Shared item handlers initialize once per full view');
+		// The exact trusted initializer is expected; hostile fixture scripts below must still be escaped.
+		$shell = str_replace((string) $init, '', $shell);
+	}
 	if ($name !== 'netapp.monitoring.list' || !empty($data['_shell'])) { return $shell; }
 	// Fixtures contain a preselected page; production paginates in ListData.
 	$data['paging'] = Modules\NetAppMonitoring\Includes\NetAppPager::forTotal(

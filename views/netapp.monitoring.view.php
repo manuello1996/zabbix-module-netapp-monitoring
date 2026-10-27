@@ -6,10 +6,9 @@ use Modules\NetAppMonitoring\Includes\NetAppRenderer as R;
 
 require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
+\Modules\NetAppMonitoring\Includes\Common\ItemActions::init($this);
+
 // Native Item dialogs depend on these parent-page scripts.
-$this->addJsFile('multilineinput.js');
-$this->addJsFile('items.js');
-$this->addJsFile('class.tagfilteritem.js');
 
 $page = (new CHtmlPage())->setTitle(_('NetApp monitoring'))->setWebLayoutMode(CViewHelper::loadLayoutMode());
 if ($data['host'] === null) {

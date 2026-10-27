@@ -37,6 +37,16 @@ html[theme="dark-theme"], html[theme="hc-dark"] {
 .netapp-monitoring-card-stopped .netapp-monitoring-card-value,
 .netapp-monitoring-card-unhealthy .netapp-monitoring-card-value { color: var(--netapp-monitoring-ui-critical); }
 
+/* Detail pages use independent cards so figures and units cannot be squeezed by charts. */
+.netapp-monitoring-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 14px; margin: 0 0 16px; }
+.netapp-monitoring-summary-grid > .netapp-monitoring-statseg { min-width: 0; padding: 16px 18px; border: 1px solid var(--netapp-monitoring-ui-border); border-radius: 8px; background: var(--netapp-monitoring-ui-bg); }
+.netapp-monitoring-summary-grid .netapp-monitoring-statseg-figure { flex-wrap: wrap; align-items: center; gap: 10px; }
+.netapp-monitoring-summary-grid .netapp-monitoring-card-value { white-space: nowrap; font-size: 24px; line-height: 1.4; }
+.netapp-monitoring-summary-grid .netapp-monitoring-statseg-aside { flex: 0 0 100%; min-width: 0; margin: 0; }
+.netapp-monitoring-summary-grid .netapp-monitoring-statseg-aside > a { display: block; }
+.netapp-monitoring-summary-grid .netapp-monitoring-sparkline, .netapp-monitoring-summary-grid .netapp-monitoring-progress { width: 100%; }
+.netapp-monitoring-statseg-footer { margin-top: 10px; color: var(--netapp-monitoring-ui-muted); font-size: 12px; overflow-wrap: anywhere; }
+
 .netapp-monitoring-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; min-height: 22px; margin: 0; padding: 0; font-size: 13px; line-height: 22px; color: var(--netapp-monitoring-ui-text); }
 .netapp-monitoring-breadcrumb a { color: var(--netapp-monitoring-ui-muted); }
 .netapp-monitoring-breadcrumb a:hover { color: var(--netapp-monitoring-ui-accent); text-decoration: underline; }
